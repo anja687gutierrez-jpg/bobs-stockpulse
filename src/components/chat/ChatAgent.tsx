@@ -6,10 +6,31 @@ import { TextStreamChatTransport } from "ai";
 import { useStockContext } from "@/components/StockProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, X, Send, Bot, User, Minimize2 } from "lucide-react";
+import { MessageSquare, X, Send, Bot, User, Minimize2, RotateCcw } from "lucide-react";
 import { formatLargeNumber } from "@/lib/utils";
 import { useDCF } from "@/hooks/useDCF";
 import { useNews } from "@/hooks/useNews";
+
+const GENERIC_PROMPTS = [
+  "What's a 1000X stock?",
+  "DCF vs P/E analysis",
+  "Portfolio diversification rules",
+  "Value investing checklist",
+];
+
+const STOCK_PROMPTS = [
+  "Is {SYMBOL} fairly valued?",
+  "Compare {SYMBOL} to peers",
+  "What's driving {SYMBOL} news?",
+  "Key risks for {SYMBOL}?",
+];
+
+const PORTFOLIO_PROMPTS = [
+  "Rebalance my holdings?",
+  "Check my concentration risk",
+  "Best entry for new stock?",
+  "How does {SYMBOL} fit my portfolio?",
+];
 
 export function ChatAgent() {
   const [isOpen, setIsOpen] = useState(false);
@@ -59,9 +80,27 @@ export function ChatAgent() {
     [stockContext?.symbol, stockContext?.price, dcfContext?.intrinsicValue, news.length, portfolioContext?.holdings.length, portfolioContext?.currentPosition?.ticker]
   );
 
-  const { messages: chatMessages, sendMessage, status } = useChat({
+  const { messages: chatMessages, sendMessage, setMessages, status } = useChat({
     transport,
   });
+
+  const handleNewChat = () => {
+    setMessages([]);
+  };
+
+  // Build context-aware suggested prompts
+  const suggestedPrompts = useMemo(() => {
+    const sym = selectedSymbol ?? "AAPL";
+    const hasHoldings = portfolio.items.some((i) => i.shares > 0);
+
+    if (hasHoldings && selectedSymbol) {
+      return PORTFOLIO_PROMPTS.map((p) => p.replace("{SYMBOL}", sym));
+    }
+    if (selectedSymbol) {
+      return STOCK_PROMPTS.map((p) => p.replace("{SYMBOL}", sym));
+    }
+    return GENERIC_PROMPTS;
+  }, [selectedSymbol, portfolio.items]);
 
   const welcomeText = "Hey — I'm your StockPulse AI. Ask me about any stock, valuation methodology, or the numbers you're seeing in the projection engine.";
 
@@ -124,6 +163,18 @@ export function ChatAgent() {
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {chatMessages.length > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleNewChat();
+              }}
+              className="p-1 hover:bg-accent rounded"
+              title="New chat"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -173,6 +224,22 @@ export function ChatAgent() {
                 </div>
               </div>
             ))}
+            {chatMessages.length === 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {suggestedPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => {
+                      setInputValue("");
+                      sendMessage({ text: prompt });
+                    }}
+                    className="px-2.5 py-1 text-xs rounded-full border border-amber-400/25 text-amber-400/80 hover:bg-amber-400/10 hover:text-amber-400 transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            )}
             {isLoading && allMessages[allMessages.length - 1]?.role === "user" && (
               <div className="flex gap-2.5">
                 <div className="h-6 w-6 rounded-full bg-amber-400/20 flex items-center justify-center shrink-0">
