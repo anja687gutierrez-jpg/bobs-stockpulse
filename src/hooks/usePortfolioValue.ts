@@ -40,40 +40,59 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
       const now = Date.now();
       const CACHE_TTL = 60_000; // 1 minute
 
-      const results: PositionData[] = await Promise.all(
-        holdingItems.map(async (item) => {
-          const cached = cacheRef.current.get(item.ticker);
-          if (cached && now - cached.ts < CACHE_TTL) {
-            return {
-              ticker: item.ticker,
-              shares: item.shares,
-              price: cached.price,
-              change: cached.change,
-              value: item.shares * cached.price,
-            };
-          }
+      // Split into cached and uncached
+      const cached: PositionData[] = [];
+      const uncached: PortfolioItem[] = [];
 
-          try {
-            const res = await fetch(`/api/quote?symbol=${item.ticker}`);
-            const q = await res.json();
-            const price = q.regularMarketPrice ?? 0;
-            const change = q.regularMarketChangePercent ?? 0;
-            cacheRef.current.set(item.ticker, { price, change, ts: now });
-            return {
-              ticker: item.ticker,
-              shares: item.shares,
-              price,
-              change,
-              value: item.shares * price,
-            };
-          } catch {
-            return { ticker: item.ticker, shares: item.shares, price: 0, change: 0, value: 0 };
-          }
-        })
-      );
+      for (const item of holdingItems) {
+        const c = cacheRef.current.get(item.ticker);
+        if (c && now - c.ts < CACHE_TTL) {
+          cached.push({
+            ticker: item.ticker,
+            shares: item.shares,
+            price: c.price,
+            change: c.change,
+            value: item.shares * c.price,
+          });
+        } else {
+          uncached.push(item);
+        }
+      }
+
+      // Batch fetch uncached symbols
+      let fetchedQuotes: Record<string, { price: number; change: number }> = {};
+      if (uncached.length > 0) {
+        try {
+          const res = await fetch("/api/quotes-batch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbols: uncached.map((i) => i.ticker) }),
+          });
+          const data = await res.json();
+          fetchedQuotes = data.quotes ?? {};
+        } catch {
+          // Fall through with empty quotes
+        }
+      }
+
+      const fetched: PositionData[] = uncached.map((item) => {
+        const q = fetchedQuotes[item.ticker];
+        const price = q?.price ?? 0;
+        const change = q?.change ?? 0;
+        if (price > 0) {
+          cacheRef.current.set(item.ticker, { price, change, ts: now });
+        }
+        return {
+          ticker: item.ticker,
+          shares: item.shares,
+          price,
+          change,
+          value: item.shares * price,
+        };
+      });
 
       if (!cancelled) {
-        setPositions(results);
+        setPositions([...cached, ...fetched]);
         setIsLoading(false);
       }
     }

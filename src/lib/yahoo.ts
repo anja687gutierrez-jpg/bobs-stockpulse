@@ -16,6 +16,38 @@ export async function searchStocks(query: string) {
     }));
 }
 
+export async function getQuotesBatch(symbols: string[]): Promise<
+  Record<string, { price: number; change: number }>
+> {
+  if (symbols.length === 0) return {};
+  const results: Record<string, { price: number; change: number }> = {};
+
+  // Process in chunks of 10 to avoid rate limits
+  for (let i = 0; i < symbols.length; i += 10) {
+    const chunk = symbols.slice(i, i + 10);
+    const quotes = await Promise.all(
+      chunk.map(async (sym) => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const q: any = await yahooFinance.quote(sym);
+          return {
+            symbol: sym,
+            price: q.regularMarketPrice ?? 0,
+            change: q.regularMarketChangePercent ?? 0,
+          };
+        } catch {
+          return { symbol: sym, price: 0, change: 0 };
+        }
+      })
+    );
+    for (const q of quotes) {
+      results[q.symbol] = { price: q.price, change: q.change };
+    }
+  }
+
+  return results;
+}
+
 export async function getQuote(symbol: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const q: any = await yahooFinance.quote(symbol);
