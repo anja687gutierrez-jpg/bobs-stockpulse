@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { object } = await generateObject({
-      model: groq("llama-3.2-90b-vision-preview"),
+      model: groq("meta-llama/llama-4-scout-17b-16e-instruct"),
       schema: z.object({
         holdings: z.array(
           z.object({
