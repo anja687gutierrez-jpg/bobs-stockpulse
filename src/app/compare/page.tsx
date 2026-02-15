@@ -18,7 +18,11 @@ export default function ComparePage() {
   const [symbols, setSymbols] = useState<string[]>([]);
   const [stocks, setStocks] = useState<CompareStock[]>([]);
 
-  const portfolioChips = portfolio.tickers
+  const POPULAR_TICKERS = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META"];
+
+  const sourceTickers = portfolio.tickers.length > 0 ? portfolio.tickers : POPULAR_TICKERS;
+  const isFromPortfolio = portfolio.tickers.length > 0;
+  const portfolioChips = sourceTickers
     .filter((t) => !symbols.includes(t))
     .slice(0, 5);
 
@@ -69,7 +73,7 @@ export default function ComparePage() {
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Briefcase className="h-3 w-3" />
-              From your portfolio:
+              {isFromPortfolio ? "From your portfolio:" : "Popular stocks:"}
             </span>
             {portfolioChips.map((ticker) => (
               <button
