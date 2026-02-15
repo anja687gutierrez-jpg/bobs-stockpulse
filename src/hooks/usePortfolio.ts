@@ -118,14 +118,19 @@ export function usePortfolio(uid: string | null = null) {
   const removeTicker = useCallback(
     async (ticker: string) => {
       const upper = ticker.toUpperCase();
+      // Optimistic delete
+      const next = items.filter((i) => i.ticker !== upper);
+      setItems(next);
+      writeLocalStorage(next);
+
       if (uid) {
-        const db = await getFirebaseDb();
-        const { doc, deleteDoc } = await import("firebase/firestore");
-        await deleteDoc(doc(db, "users", uid, "portfolio", upper));
-      } else {
-        const next = items.filter((i) => i.ticker !== upper);
-        setItems(next);
-        writeLocalStorage(next);
+        try {
+          const db = await getFirebaseDb();
+          const { doc, deleteDoc } = await import("firebase/firestore");
+          await deleteDoc(doc(db, "users", uid, "portfolio", upper));
+        } catch {
+          // localStorage already updated
+        }
       }
     },
     [uid, items]

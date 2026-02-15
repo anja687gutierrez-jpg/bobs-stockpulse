@@ -76,16 +76,12 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
         }
       }
 
-      // Split uncached into small batches and fetch in parallel
+      // Fetch uncached in sequential batches to avoid overwhelming the Worker
       const allQuotes: Record<string, { price: number; change: number }> = {};
       if (uncached.length > 0) {
-        const symbolBatches: string[][] = [];
         for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
-          symbolBatches.push(uncached.slice(i, i + BATCH_SIZE).map((u) => u.ticker));
-        }
-
-        const batchResults = await Promise.all(symbolBatches.map(fetchBatch));
-        for (const result of batchResults) {
+          const chunk = uncached.slice(i, i + BATCH_SIZE).map((u) => u.ticker);
+          const result = await fetchBatch(chunk);
           Object.assign(allQuotes, result);
         }
       }
