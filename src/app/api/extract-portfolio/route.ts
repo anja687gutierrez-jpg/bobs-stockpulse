@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
         holdings: z.array(
           z.object({
             ticker: z.string().regex(/^[A-Z]{1,5}$/),
-            shares: z.number().min(0).default(0),
+            shares: z.number().min(0),
           })
         ).min(1),
       }),
