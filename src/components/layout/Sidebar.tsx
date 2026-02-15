@@ -6,6 +6,7 @@ import { BarChart3, TrendingUp, GitCompareArrows, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PortfolioDropZone } from "./PortfolioDropZone";
 import { UserMenu } from "./UserMenu";
+import { NotificationSettings } from "./NotificationSettings";
 import { AlertBell } from "@/components/alerts/AlertBell";
 import type { PortfolioItem } from "@/lib/types";
 import type { PriceAlert } from "@/hooks/useAlerts";
@@ -102,6 +103,11 @@ export function Sidebar({ items, alerts, onSelectTicker, onRemoveTicker, onExtra
       {/* Portfolio Drop Zone */}
       <div className="p-3 border-t border-border">
         <PortfolioDropZone onExtracted={onExtractedItems} />
+      </div>
+
+      {/* Notification Settings */}
+      <div className="border-t border-border">
+        <NotificationSettings />
       </div>
 
       {/* User Menu */}

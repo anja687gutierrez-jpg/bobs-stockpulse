@@ -9,6 +9,24 @@ export function isAllowedEndpoint(ep: string): ep is FmpEndpoint {
   return ALLOWED_ENDPOINTS.includes(ep as FmpEndpoint);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchFmpCalendar(
+  calendar: "earnings-calendar" | "dividend-calendar",
+  from: string,
+  to: string
+): Promise<any[]> {
+  const apiKey = process.env.FMP_API_KEY;
+  if (!apiKey || apiKey === "your_fmp_api_key_here") {
+    throw new Error("FMP_API_KEY not configured");
+  }
+
+  const url = `${FMP_BASE}/${calendar}?from=${from}&to=${to}&apikey=${apiKey}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`FMP calendar error: ${res.status}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
 export async function fetchFmp(endpoint: FmpEndpoint, symbol: string) {
   const cacheKey = `${endpoint}:${symbol}`;
   const cached = cache.get(cacheKey);

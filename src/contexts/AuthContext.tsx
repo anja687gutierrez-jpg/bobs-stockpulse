@@ -53,6 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         emailAlerts: true,
         emailSummary: true,
         pushAlerts: true,
+        signalAlerts: true,
+        earningsAlerts: true,
+        dividendAlerts: true,
       },
     });
   };

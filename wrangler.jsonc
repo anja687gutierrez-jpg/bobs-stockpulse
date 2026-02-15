@@ -13,6 +13,9 @@
       "globs": ["**/*.js"]
     }
   ],
+  "triggers": {
+    "crons": ["30 22 * * 1-5"]
+  },
   "[unsafe]": {
     "capnp": {
       "compile_wasm_modules": false

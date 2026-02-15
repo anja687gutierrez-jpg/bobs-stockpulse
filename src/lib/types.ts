@@ -154,3 +154,30 @@ export interface MetricDefinition {
   };
   higherIsBetter: boolean;
 }
+
+export interface NotificationPrefs {
+  emailAlerts: boolean;
+  emailSummary: boolean;
+  pushAlerts: boolean;
+  signalAlerts: boolean;
+  earningsAlerts: boolean;
+  dividendAlerts: boolean;
+}
+
+export type SignalType = "buy" | "sell" | "attention";
+
+export interface TechnicalSignal {
+  ticker: string;
+  signal: string;
+  type: SignalType;
+  value: number;
+  description: string;
+}
+
+export interface CalendarEvent {
+  ticker: string;
+  event: "earnings" | "dividend";
+  date: string;
+  daysUntil: number;
+  details?: string;
+}
