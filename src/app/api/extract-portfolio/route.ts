@@ -31,7 +31,14 @@ export async function POST(req: NextRequest) {
           content: [
             {
               type: "text",
-              text: "This image should be a screenshot from a stock brokerage app (like Robinhood, Fidelity, Schwab, E-Trade, Webull, etc.) showing a portfolio of stock holdings. Extract ONLY real US stock ticker symbols (e.g. AAPL, MSFT, TSLA, AMZN) and their share counts. Do NOT extract random words or abbreviations that are not real stock tickers. If this image is NOT a brokerage portfolio screenshot, return an empty holdings array. If shares aren't visible, use 0.",
+              text: `This image is a screenshot from a stock brokerage app (SoFi, Robinhood, Fidelity, Schwab, Webull, etc.) showing a portfolio of stock holdings.
+
+Extract ONLY real US stock ticker symbols and their EXACT share counts. Important rules:
+- Shares are often fractional decimals (e.g. 1.5254, 4.42728, 22.64889). Read the EXACT number from the "Shares" column.
+- The ticker symbol is the short uppercase code (e.g. AAPL, TSLA, GOOGL, SCHD).
+- Do NOT extract company names, column headers, or non-stock text as tickers.
+- If this is NOT a brokerage portfolio screenshot, return an empty holdings array.
+- If shares aren't visible for a holding, use 1 as default (not 0).`,
             },
             {
               type: "image",

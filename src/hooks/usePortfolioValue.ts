@@ -24,7 +24,7 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
   const [isLoading, setIsLoading] = useState(false);
   const cacheRef = useRef<Map<string, { price: number; change: number; ts: number }>>(new Map());
 
-  const holdingItems = items.filter((i) => i.shares > 0);
+  const holdingItems = items.map((i) => i.shares > 0 ? i : { ...i, shares: 1 });
   const holdingKey = holdingItems.map((i) => `${i.ticker}:${i.shares}`).join(",");
 
   useEffect(() => {
