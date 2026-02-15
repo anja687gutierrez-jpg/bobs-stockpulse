@@ -87,6 +87,7 @@ const SIGNAL_COLORS: Record<string, string> = {
   buy: "#34d399",
   sell: "#f87171",
   attention: "#fbbf24",
+  swing: "#a855f7",
 };
 
 export function technicalSignalEmail(params: {

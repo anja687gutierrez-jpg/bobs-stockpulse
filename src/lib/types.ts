@@ -162,9 +162,10 @@ export interface NotificationPrefs {
   signalAlerts: boolean;
   earningsAlerts: boolean;
   dividendAlerts: boolean;
+  swingAlerts: boolean;
 }
 
-export type SignalType = "buy" | "sell" | "attention";
+export type SignalType = "buy" | "sell" | "attention" | "swing";
 
 export interface TechnicalSignal {
   ticker: string;

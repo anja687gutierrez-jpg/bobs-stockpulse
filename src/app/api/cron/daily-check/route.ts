@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
           signalAlerts: true,
           earningsAlerts: true,
           dividendAlerts: true,
+          swingAlerts: true,
           ...data.notificationPrefs,
         },
       });
@@ -94,6 +95,11 @@ export async function GET(req: NextRequest) {
           } catch {
             // Skip ticker on error
           }
+        }
+
+        // Filter out swing signals if user hasn't opted in
+        if (!user.prefs.swingAlerts) {
+          allSignals = allSignals.filter((s) => s.type !== "swing");
         }
 
         if (allSignals.length > 0) {

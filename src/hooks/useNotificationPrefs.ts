@@ -12,6 +12,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
   signalAlerts: true,
   earningsAlerts: true,
   dividendAlerts: true,
+  swingAlerts: true,
 };
 
 export function useNotificationPrefs() {

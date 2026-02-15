@@ -9,6 +9,7 @@ import {
   BarChart3,
   ChevronDown,
   ChevronRight,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotificationPrefs } from "@/hooks/useNotificationPrefs";
@@ -33,6 +34,12 @@ const settings: SettingRow[] = [
     label: "Technical Signals",
     description: "RSI, moving averages, volume spikes",
     icon: Activity,
+  },
+  {
+    key: "swingAlerts",
+    label: "Swing Trade Signals",
+    description: "MACD, EMA crossovers, Bollinger breakouts",
+    icon: TrendingUp,
   },
   {
     key: "earningsAlerts",

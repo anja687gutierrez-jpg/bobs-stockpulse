@@ -6,6 +6,7 @@ import { ProjectionTable } from "@/components/analysis/ProjectionTable";
 import { CaseToggle } from "@/components/analysis/CaseToggle";
 import { DCFEngine } from "@/components/analysis/DCFEngine";
 import { NewsAndEarnings } from "@/components/analysis/NewsAndEarnings";
+import { SignalsPanel } from "@/components/analysis/SignalsPanel";
 import { useProjections } from "@/hooks/useProjections";
 import { useNews } from "@/hooks/useNews";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,6 +58,8 @@ export default function AnalysisPage() {
         onCreateAlert={createAlert}
         shares={selectedSymbol ? (portfolio.items.find((i) => i.ticker === selectedSymbol)?.shares ?? 0) : 0}
       />
+
+      <SignalsPanel symbol={selectedSymbol} />
 
       <Card className="bg-card border-border">
         <CardHeader className="pb-3">
