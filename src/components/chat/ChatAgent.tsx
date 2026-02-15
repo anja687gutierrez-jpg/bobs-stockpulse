@@ -16,7 +16,7 @@ export function ChatAgent() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { selectedSymbol, quote, cashFlowStatements, balanceSheetStatements } = useStockContext();
+  const { selectedSymbol, quote, cashFlowStatements, balanceSheetStatements, portfolio } = useStockContext();
 
   const sharesOutstanding = quote?.sharesOutstanding ?? 0;
   const currentPrice = quote?.regularMarketPrice ?? 0;
@@ -42,14 +42,21 @@ export function ChatAgent() {
 
   const newsContext = news.length > 0 ? news.slice(0, 5).map((n) => ({ title: n.title })) : null;
 
+  const portfolioContext = portfolio.items.length > 0
+    ? {
+        holdings: portfolio.items.filter((i) => i.shares > 0).map((i) => ({ ticker: i.ticker, shares: i.shares })),
+        currentPosition: selectedSymbol ? portfolio.items.find((i) => i.ticker === selectedSymbol && i.shares > 0) ?? null : null,
+      }
+    : null;
+
   const transport = useMemo(
     () =>
       new TextStreamChatTransport({
         api: "/api/chat",
-        body: { stockContext, dcfContext, newsContext },
+        body: { stockContext, dcfContext, newsContext, portfolioContext },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stockContext?.symbol, stockContext?.price, dcfContext?.intrinsicValue, news.length]
+    [stockContext?.symbol, stockContext?.price, dcfContext?.intrinsicValue, news.length, portfolioContext?.holdings.length, portfolioContext?.currentPosition?.ticker]
   );
 
   const { messages: chatMessages, sendMessage, status } = useChat({

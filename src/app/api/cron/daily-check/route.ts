@@ -147,14 +147,16 @@ export async function GET(req: NextRequest) {
               try {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const q: any = await yahooFinance.quote(p.ticker);
+                const price = q.regularMarketPrice ?? 0;
                 return {
                   ticker: p.ticker,
                   shares: p.shares,
-                  price: q.regularMarketPrice ?? 0,
+                  price,
                   change: q.regularMarketChangePercent ?? 0,
+                  value: p.shares * price,
                 };
               } catch {
-                return { ticker: p.ticker, shares: p.shares, price: 0, change: 0 };
+                return { ticker: p.ticker, shares: p.shares, price: 0, change: 0, value: 0 };
               }
             })
           );

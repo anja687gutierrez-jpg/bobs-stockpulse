@@ -29,7 +29,7 @@ export function alertTriggeredEmail(params: {
 }
 
 export function dailySummaryEmail(params: {
-  portfolio: { ticker: string; shares: number; price: number; change: number }[];
+  portfolio: { ticker: string; shares: number; price: number; change: number; value?: number }[];
   totalValue: number;
   totalChange: number;
 }): { subject: string; html: string } {
@@ -39,13 +39,16 @@ export function dailySummaryEmail(params: {
 
   const rows = portfolio
     .map(
-      (h) =>
-        `<tr>
+      (h) => {
+        const val = h.value ?? h.shares * h.price;
+        return `<tr>
           <td style="padding: 4px 8px; font-family: monospace; color: #fbbf24;">${h.ticker}</td>
           <td style="padding: 4px 8px; text-align: right;">${h.shares}</td>
           <td style="padding: 4px 8px; text-align: right;">$${h.price.toFixed(2)}</td>
+          <td style="padding: 4px 8px; text-align: right;">$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           <td style="padding: 4px 8px; text-align: right; color: ${h.change >= 0 ? "#34d399" : "#f87171"};">${h.change >= 0 ? "+" : ""}${h.change.toFixed(2)}%</td>
-        </tr>`
+        </tr>`;
+      }
     )
     .join("");
 
@@ -65,6 +68,7 @@ export function dailySummaryEmail(params: {
               <th style="padding: 4px 8px; text-align: left;">Ticker</th>
               <th style="padding: 4px 8px; text-align: right;">Shares</th>
               <th style="padding: 4px 8px; text-align: right;">Price</th>
+              <th style="padding: 4px 8px; text-align: right;">Value</th>
               <th style="padding: 4px 8px; text-align: right;">Change</th>
             </tr>
           </thead>
@@ -172,7 +176,7 @@ export function calendarEventEmail(params: {
 }
 
 export function enhancedDailySummaryEmail(params: {
-  portfolio: { ticker: string; shares: number; price: number; change: number }[];
+  portfolio: { ticker: string; shares: number; price: number; change: number; value?: number }[];
   totalValue: number;
   totalChange: number;
   signals?: TechnicalSignal[];
@@ -184,13 +188,16 @@ export function enhancedDailySummaryEmail(params: {
 
   const holdingRows = portfolio
     .map(
-      (h) =>
-        `<tr>
+      (h) => {
+        const val = h.value ?? h.shares * h.price;
+        return `<tr>
           <td style="padding: 4px 8px; font-family: monospace; color: #fbbf24;">${h.ticker}</td>
           <td style="padding: 4px 8px; text-align: right;">${h.shares}</td>
           <td style="padding: 4px 8px; text-align: right;">$${h.price.toFixed(2)}</td>
+          <td style="padding: 4px 8px; text-align: right;">$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
           <td style="padding: 4px 8px; text-align: right; color: ${h.change >= 0 ? "#34d399" : "#f87171"};">${h.change >= 0 ? "+" : ""}${h.change.toFixed(2)}%</td>
-        </tr>`
+        </tr>`;
+      }
     )
     .join("");
 
@@ -249,6 +256,7 @@ export function enhancedDailySummaryEmail(params: {
               <th style="padding: 4px 8px; text-align: left;">Ticker</th>
               <th style="padding: 4px 8px; text-align: right;">Shares</th>
               <th style="padding: 4px 8px; text-align: right;">Price</th>
+              <th style="padding: 4px 8px; text-align: right;">Value</th>
               <th style="padding: 4px 8px; text-align: right;">Change</th>
             </tr>
           </thead>

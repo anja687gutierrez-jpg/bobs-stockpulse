@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { CompareSelector } from "@/components/compare/CompareSelector";
 import { CompareTable } from "@/components/compare/CompareTable";
+import { useStockContext } from "@/components/StockProvider";
 import type { KeyMetric } from "@/lib/types";
-import { GitCompareArrows } from "lucide-react";
+import { GitCompareArrows, Briefcase } from "lucide-react";
 
 interface CompareStock {
   symbol: string;
@@ -13,8 +14,13 @@ interface CompareStock {
 }
 
 export default function ComparePage() {
+  const { portfolio } = useStockContext();
   const [symbols, setSymbols] = useState<string[]>([]);
   const [stocks, setStocks] = useState<CompareStock[]>([]);
+
+  const portfolioChips = portfolio.tickers
+    .filter((t) => !symbols.includes(t))
+    .slice(0, 5);
 
   const fetchMetrics = useCallback(async (sym: string): Promise<CompareStock> => {
     try {
@@ -59,6 +65,23 @@ export default function ComparePage() {
           <GitCompareArrows className="h-6 w-6 text-amber-400" />
           <h2 className="text-2xl font-bold">Compare Stocks</h2>
         </div>
+        {portfolioChips.length > 0 && (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Briefcase className="h-3 w-3" />
+              From your portfolio:
+            </span>
+            {portfolioChips.map((ticker) => (
+              <button
+                key={ticker}
+                onClick={() => setSymbols((prev) => [...prev, ticker])}
+                className="px-2 py-0.5 text-xs font-mono rounded-md border border-amber-400/30 text-amber-400 hover:bg-amber-400/10 transition-colors"
+              >
+                {ticker}
+              </button>
+            ))}
+          </div>
+        )}
         <CompareSelector
           symbols={symbols}
           onAdd={(s) => setSymbols((prev) => [...prev, s])}

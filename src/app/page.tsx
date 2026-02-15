@@ -55,6 +55,7 @@ export default function AnalysisPage() {
           }
         }}
         onCreateAlert={createAlert}
+        shares={selectedSymbol ? (portfolio.items.find((i) => i.ticker === selectedSymbol)?.shares ?? 0) : 0}
       />
 
       <Card className="bg-card border-border">

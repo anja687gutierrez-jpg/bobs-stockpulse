@@ -13,9 +13,10 @@ interface StockHeaderProps {
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onCreateAlert?: (alert: { ticker: string; targetPrice: number; direction: "above" | "below" }) => void;
+  shares?: number;
 }
 
-export function StockHeader({ quote, isLoading, isFavorite, onToggleFavorite, onCreateAlert }: StockHeaderProps) {
+export function StockHeader({ quote, isLoading, isFavorite, onToggleFavorite, onCreateAlert, shares = 0 }: StockHeaderProps) {
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -39,6 +40,11 @@ export function StockHeader({ quote, isLoading, isFavorite, onToggleFavorite, on
       <div className="flex items-center gap-3">
         <h2 className="text-2xl font-bold">{quote.symbol}</h2>
         <span className="text-lg text-muted-foreground">{quote.shortName}</span>
+        {shares > 0 && (
+          <Badge variant="secondary" className="bg-amber-400/10 text-amber-400 border border-amber-400/20">
+            {shares} shares &middot; {formatCurrency(shares * quote.regularMarketPrice)}
+          </Badge>
+        )}
         <div className="ml-auto flex items-center gap-1">
           {onCreateAlert && (
             <PriceAlertModal

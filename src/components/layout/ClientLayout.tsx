@@ -7,6 +7,7 @@ import { Sidebar } from "./Sidebar";
 import { SearchBar } from "./SearchBar";
 import { VoiceButton } from "@/components/voice/VoiceButton";
 import { ChatAgent } from "@/components/chat/ChatAgent";
+import { PortfolioSummaryBar } from "./PortfolioSummaryBar";
 import { Toaster } from "@/components/ui/sonner";
 import { useState, type ReactNode } from "react";
 
@@ -31,6 +32,7 @@ function LayoutInner({ children }: { children: ReactNode }) {
           <SearchBar onSelect={selectSymbol} externalQuery={voiceQuery} />
           <VoiceButton onSearchQuery={setVoiceQuery} />
         </header>
+        <PortfolioSummaryBar />
         <main className="p-6">{children}</main>
       </div>
       <ChatAgent />
