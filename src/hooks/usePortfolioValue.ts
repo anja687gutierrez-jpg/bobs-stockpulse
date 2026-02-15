@@ -19,7 +19,7 @@ interface PortfolioValueResult {
   isLoading: boolean;
 }
 
-const BATCH_SIZE = 8; // Keep under Cloudflare Workers 50-subrequest limit
+const BATCH_SIZE = 20; // Each Worker invocation handles up to 20 Yahoo calls
 
 async function fetchBatch(
   symbols: string[]
@@ -76,12 +76,15 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
         }
       }
 
-      // Fetch uncached in sequential batches to avoid overwhelming the Worker
+      // Fetch uncached in parallel batches of 20 (max 3 concurrent requests for 56 symbols)
       const allQuotes: Record<string, { price: number; change: number }> = {};
       if (uncached.length > 0) {
+        const symbolBatches: string[][] = [];
         for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
-          const chunk = uncached.slice(i, i + BATCH_SIZE).map((u) => u.ticker);
-          const result = await fetchBatch(chunk);
+          symbolBatches.push(uncached.slice(i, i + BATCH_SIZE).map((u) => u.ticker));
+        }
+        const results = await Promise.all(symbolBatches.map(fetchBatch));
+        for (const result of results) {
           Object.assign(allQuotes, result);
         }
       }
