@@ -1,16 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import {
-  collection,
-  doc,
-  onSnapshot,
-  setDoc,
-  deleteDoc,
-  serverTimestamp,
-  writeBatch,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { getFirebaseDb } from "@/lib/firebase";
 import type { PortfolioItem } from "@/lib/types";
 
 const STORAGE_KEY = "bobsstockpulse_portfolio";
@@ -37,44 +28,48 @@ export function usePortfolio(uid: string | null = null) {
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const hasMigrated = useRef(false);
 
-  // Firestore real-time sync
   useEffect(() => {
     if (!uid) {
-      // No user — load from localStorage
       setItems(readLocalStorage());
       return;
     }
 
-    const colRef = collection(db, "users", uid, "portfolio");
-    const unsubscribe = onSnapshot(colRef, (snapshot) => {
-      const firestoreItems: PortfolioItem[] = snapshot.docs.map((d) => ({
-        ticker: d.id,
-        shares: d.data().shares ?? 0,
-      }));
+    let unsubscribe: (() => void) | undefined;
 
-      // One-time migration: if Firestore is empty but localStorage has data
-      if (firestoreItems.length === 0 && !hasMigrated.current) {
-        hasMigrated.current = true;
-        const local = readLocalStorage();
-        if (local.length > 0) {
-          const batch = writeBatch(db);
-          local.forEach((item) => {
-            batch.set(doc(db, "users", uid, "portfolio", item.ticker), {
-              ticker: item.ticker,
-              shares: item.shares,
-              addedAt: serverTimestamp(),
+    (async () => {
+      const db = await getFirebaseDb();
+      const { collection, onSnapshot, doc, writeBatch, serverTimestamp } = await import("firebase/firestore");
+      const colRef = collection(db, "users", uid, "portfolio");
+
+      unsubscribe = onSnapshot(colRef, (snapshot) => {
+        const firestoreItems: PortfolioItem[] = snapshot.docs.map((d) => ({
+          ticker: d.id,
+          shares: d.data().shares ?? 0,
+        }));
+
+        if (firestoreItems.length === 0 && !hasMigrated.current) {
+          hasMigrated.current = true;
+          const local = readLocalStorage();
+          if (local.length > 0) {
+            const batch = writeBatch(db);
+            local.forEach((item) => {
+              batch.set(doc(db, "users", uid, "portfolio", item.ticker), {
+                ticker: item.ticker,
+                shares: item.shares,
+                addedAt: serverTimestamp(),
+              });
             });
-          });
-          batch.commit();
-          return; // onSnapshot will fire again with the migrated data
+            batch.commit();
+            return;
+          }
         }
-      }
 
-      setItems(firestoreItems);
-      writeLocalStorage(firestoreItems); // mirror for offline
-    });
+        setItems(firestoreItems);
+        writeLocalStorage(firestoreItems);
+      });
+    })();
 
-    return unsubscribe;
+    return () => unsubscribe?.();
   }, [uid]);
 
   const tickers = useMemo(() => items.map((i) => i.ticker), [items]);
@@ -83,6 +78,8 @@ export function usePortfolio(uid: string | null = null) {
     async (item: PortfolioItem) => {
       const upper = item.ticker.toUpperCase();
       if (uid) {
+        const db = await getFirebaseDb();
+        const { doc, setDoc, serverTimestamp } = await import("firebase/firestore");
         await setDoc(doc(db, "users", uid, "portfolio", upper), {
           ticker: upper,
           shares: item.shares,
@@ -117,6 +114,8 @@ export function usePortfolio(uid: string | null = null) {
     async (ticker: string) => {
       const upper = ticker.toUpperCase();
       if (uid) {
+        const db = await getFirebaseDb();
+        const { doc, deleteDoc } = await import("firebase/firestore");
         await deleteDoc(doc(db, "users", uid, "portfolio", upper));
       } else {
         const next = items.filter((i) => i.ticker !== upper);
@@ -138,6 +137,8 @@ export function usePortfolio(uid: string | null = null) {
       }).map((item) => ({ ...item, ticker: item.ticker.toUpperCase() }));
 
       if (uid) {
+        const db = await getFirebaseDb();
+        const { doc, writeBatch, serverTimestamp } = await import("firebase/firestore");
         const batch = writeBatch(db);
         unique.forEach((item) => {
           batch.set(doc(db, "users", uid, "portfolio", item.ticker), {
