@@ -14,28 +14,38 @@ export function PortfolioDropZone({ onExtracted }: PortfolioDropZoneProps) {
   const [error, setError] = useState<string | null>(null);
 
   const processFile = useCallback(
-    async (file: File) => {
+    async (file: File): Promise<PortfolioItem[]> => {
+      const buffer = await file.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
+      );
+      const dataUrl = `data:${file.type};base64,${base64}`;
+
+      const res = await fetch("/api/extract-portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data.holdings ?? [];
+    },
+    []
+  );
+
+  const processFiles = useCallback(
+    async (files: File[]) => {
       setIsLoading(true);
       setError(null);
 
       try {
-        const buffer = await file.arrayBuffer();
-        const base64 = btoa(
-          new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), "")
-        );
-        const dataUrl = `data:${file.type};base64,${base64}`;
-
-        const res = await fetch("/api/extract-portfolio", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: dataUrl }),
-        });
-
-        const data = await res.json();
-        if (data.error) {
-          setError(data.error);
-        } else if (data.holdings) {
-          onExtracted(data.holdings);
+        const results = await Promise.all(files.map(processFile));
+        const allHoldings = results.flat();
+        if (allHoldings.length === 0) {
+          setError("No stock tickers found");
+        } else {
+          onExtracted(allHoldings);
         }
       } catch {
         setError("Failed to extract portfolio");
@@ -43,19 +53,19 @@ export function PortfolioDropZone({ onExtracted }: PortfolioDropZoneProps) {
         setIsLoading(false);
       }
     },
-    [onExtracted]
+    [processFile, onExtracted]
   );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith("image/")) {
-        processFile(file);
-      }
+      const images = Array.from(e.dataTransfer.files).filter((f) =>
+        f.type.startsWith("image/")
+      );
+      if (images.length > 0) processFiles(images);
     },
-    [processFile]
+    [processFiles]
   );
 
   return (
@@ -77,15 +87,16 @@ export function PortfolioDropZone({ onExtracted }: PortfolioDropZoneProps) {
           <Upload className="h-5 w-5 text-muted-foreground" />
         )}
         <span className="text-xs text-muted-foreground">
-          {isLoading ? "Extracting..." : "Drop screenshot"}
+          {isLoading ? "Extracting..." : "Drop screenshot(s)"}
         </span>
         <input
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) processFile(file);
+            const files = Array.from(e.target.files ?? []);
+            if (files.length > 0) processFiles(files);
           }}
         />
       </label>

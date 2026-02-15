@@ -24,7 +24,13 @@ function LayoutInner({ children }: { children: ReactNode }) {
         onSelectTicker={selectSymbol}
         onRemoveTicker={portfolio.removeTicker}
         onExtractedItems={(extracted) => {
-          extracted.forEach((item) => portfolio.addItem(item));
+          const existing = new Set(portfolio.tickers);
+          extracted.forEach((item) => {
+            if (!existing.has(item.ticker)) {
+              existing.add(item.ticker);
+              portfolio.addItem(item);
+            }
+          });
         }}
       />
       <div className="flex-1 ml-64">
