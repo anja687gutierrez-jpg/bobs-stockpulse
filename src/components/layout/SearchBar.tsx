@@ -8,14 +8,21 @@ import type { SearchResult } from "@/lib/types";
 
 interface SearchBarProps {
   onSelect: (symbol: string) => void;
+  externalQuery?: string;
 }
 
-export function SearchBar({ onSelect }: SearchBarProps) {
+export function SearchBar({ onSelect, externalQuery }: SearchBarProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (externalQuery) {
+      setQuery(externalQuery);
+    }
+  }, [externalQuery]);
 
   useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 1) {

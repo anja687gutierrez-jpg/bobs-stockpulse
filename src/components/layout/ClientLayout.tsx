@@ -5,12 +5,14 @@ import { AuthGate } from "@/components/auth/AuthGate";
 import { StockProvider, useStockContext } from "@/components/StockProvider";
 import { Sidebar } from "./Sidebar";
 import { SearchBar } from "./SearchBar";
+import { VoiceButton } from "@/components/voice/VoiceButton";
 import { ChatAgent } from "@/components/chat/ChatAgent";
 import { Toaster } from "@/components/ui/sonner";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 function LayoutInner({ children }: { children: ReactNode }) {
   const { selectSymbol, portfolio, alerts } = useStockContext();
+  const [voiceQuery, setVoiceQuery] = useState<string>();
 
   return (
     <div className="flex min-h-screen">
@@ -25,8 +27,9 @@ function LayoutInner({ children }: { children: ReactNode }) {
         }}
       />
       <div className="flex-1 ml-64">
-        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border px-6 py-3">
-          <SearchBar onSelect={selectSymbol} />
+        <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border px-6 py-3 flex items-center gap-3">
+          <SearchBar onSelect={selectSymbol} externalQuery={voiceQuery} />
+          <VoiceButton onSearchQuery={setVoiceQuery} />
         </header>
         <main className="p-6">{children}</main>
       </div>
