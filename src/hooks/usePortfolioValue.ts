@@ -19,6 +19,24 @@ interface PortfolioValueResult {
   isLoading: boolean;
 }
 
+const BATCH_SIZE = 8; // Keep under Cloudflare Workers 50-subrequest limit
+
+async function fetchBatch(
+  symbols: string[]
+): Promise<Record<string, { price: number; change: number }>> {
+  try {
+    const res = await fetch("/api/quotes-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbols }),
+    });
+    const data = await res.json();
+    return data.quotes ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult {
   const [positions, setPositions] = useState<PositionData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,9 +56,8 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
 
     async function fetchAll() {
       const now = Date.now();
-      const CACHE_TTL = 60_000; // 1 minute
+      const CACHE_TTL = 60_000;
 
-      // Split into cached and uncached
       const cached: PositionData[] = [];
       const uncached: PortfolioItem[] = [];
 
@@ -59,24 +76,22 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
         }
       }
 
-      // Batch fetch uncached symbols
-      let fetchedQuotes: Record<string, { price: number; change: number }> = {};
+      // Split uncached into small batches and fetch in parallel
+      const allQuotes: Record<string, { price: number; change: number }> = {};
       if (uncached.length > 0) {
-        try {
-          const res = await fetch("/api/quotes-batch", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ symbols: uncached.map((i) => i.ticker) }),
-          });
-          const data = await res.json();
-          fetchedQuotes = data.quotes ?? {};
-        } catch {
-          // Fall through with empty quotes
+        const symbolBatches: string[][] = [];
+        for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
+          symbolBatches.push(uncached.slice(i, i + BATCH_SIZE).map((u) => u.ticker));
+        }
+
+        const batchResults = await Promise.all(symbolBatches.map(fetchBatch));
+        for (const result of batchResults) {
+          Object.assign(allQuotes, result);
         }
       }
 
       const fetched: PositionData[] = uncached.map((item) => {
-        const q = fetchedQuotes[item.ticker];
+        const q = allQuotes[item.ticker];
         const price = q?.price ?? 0;
         const change = q?.change ?? 0;
         if (price > 0) {
@@ -104,7 +119,6 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
 
   const totalValue = positions.reduce((sum, p) => sum + p.value, 0);
   const totalChangeDollar = positions.reduce((sum, p) => {
-    // change is percent, so prior value = value / (1 + change/100)
     const priorValue = p.change !== 0 ? p.value / (1 + p.change / 100) : p.value;
     return sum + (p.value - priorValue);
   }, 0);
