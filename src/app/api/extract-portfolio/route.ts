@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
             ticker: z.string().regex(/^[A-Z]{1,5}$/),
             shares: z.number().min(0),
           })
-        ).min(1),
+        ),
       }),
       messages: [
         {
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
           content: [
             {
               type: "text",
-              text: "Extract all stock ticker symbols and their share counts from this brokerage screenshot. For each holding, return the uppercase US ticker symbol and the number of shares. If shares aren't visible, use 0.",
+              text: "This image should be a screenshot from a stock brokerage app (like Robinhood, Fidelity, Schwab, E-Trade, Webull, etc.) showing a portfolio of stock holdings. Extract ONLY real US stock ticker symbols (e.g. AAPL, MSFT, TSLA, AMZN) and their share counts. Do NOT extract random words or abbreviations that are not real stock tickers. If this image is NOT a brokerage portfolio screenshot, return an empty holdings array. If shares aren't visible, use 0.",
             },
             {
               type: "image",
