@@ -40,11 +40,20 @@ export function PortfolioDropZone({ onExtracted }: PortfolioDropZoneProps) {
       setError(null);
 
       try {
-        const results = await Promise.all(files.map(processFile));
-        const allHoldings = results.flat();
+        const settled = await Promise.allSettled(files.map(processFile));
+        const allHoldings: PortfolioItem[] = [];
+        let failures = 0;
+        for (const result of settled) {
+          if (result.status === "fulfilled") {
+            allHoldings.push(...result.value);
+          } else {
+            failures++;
+          }
+        }
         if (allHoldings.length === 0) {
-          setError("No stock tickers found");
+          setError(failures > 0 ? `${failures} screenshot(s) failed` : "No stock tickers found");
         } else {
+          if (failures > 0) setError(`${failures} screenshot(s) failed, got ${allHoldings.length} tickers from the rest`);
           onExtracted(allHoldings);
         }
       } catch {

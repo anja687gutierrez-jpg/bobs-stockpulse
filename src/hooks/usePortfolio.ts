@@ -25,7 +25,7 @@ function writeLocalStorage(items: PortfolioItem[]) {
 }
 
 export function usePortfolio(uid: string | null = null) {
-  const [items, setItems] = useState<PortfolioItem[]>([]);
+  const [items, setItems] = useState<PortfolioItem[]>(() => readLocalStorage());
   const hasMigrated = useRef(false);
 
   useEffect(() => {
@@ -51,6 +51,7 @@ export function usePortfolio(uid: string | null = null) {
           hasMigrated.current = true;
           const local = readLocalStorage();
           if (local.length > 0) {
+            // Migrate localStorage → Firestore
             const batch = writeBatch(db);
             local.forEach((item) => {
               batch.set(doc(db, "users", uid, "portfolio", item.ticker), {
@@ -60,12 +61,16 @@ export function usePortfolio(uid: string | null = null) {
               });
             });
             batch.commit();
+            // Show localStorage data immediately while Firestore syncs
+            setItems(local);
             return;
           }
         }
 
-        setItems(firestoreItems);
-        writeLocalStorage(firestoreItems);
+        if (firestoreItems.length > 0) {
+          setItems(firestoreItems);
+          writeLocalStorage(firestoreItems);
+        }
       });
     })();
 
@@ -136,21 +141,26 @@ export function usePortfolio(uid: string | null = null) {
         return true;
       }).map((item) => ({ ...item, ticker: item.ticker.toUpperCase() }));
 
+      // Optimistic update — show data immediately
+      setItems(unique);
+      writeLocalStorage(unique);
+
       if (uid) {
-        const db = await getFirebaseDb();
-        const { doc, writeBatch, serverTimestamp } = await import("firebase/firestore");
-        const batch = writeBatch(db);
-        unique.forEach((item) => {
-          batch.set(doc(db, "users", uid, "portfolio", item.ticker), {
-            ticker: item.ticker,
-            shares: item.shares,
-            addedAt: serverTimestamp(),
+        try {
+          const db = await getFirebaseDb();
+          const { doc, writeBatch, serverTimestamp } = await import("firebase/firestore");
+          const batch = writeBatch(db);
+          unique.forEach((item) => {
+            batch.set(doc(db, "users", uid, "portfolio", item.ticker), {
+              ticker: item.ticker,
+              shares: item.shares,
+              addedAt: serverTimestamp(),
+            });
           });
-        });
-        await batch.commit();
-      } else {
-        setItems(unique);
-        writeLocalStorage(unique);
+          await batch.commit();
+        } catch {
+          // localStorage backup already written above
+        }
       }
     },
     [uid]
