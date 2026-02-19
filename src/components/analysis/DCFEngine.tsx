@@ -75,7 +75,7 @@ export function DCFEngine({
         {/* No data warning */}
         {!hasData && (
           <p className="text-muted-foreground text-sm">
-            No cash flow data available (FMP API key may not be configured). Showing defaults.
+            No cash flow data available (FMP may be rate-limited). Showing defaults.
           </p>
         )}
 

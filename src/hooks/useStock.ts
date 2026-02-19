@@ -43,38 +43,52 @@ export function useStock(symbol: string | null) {
     setIsLoading(true);
     setError(null);
 
-    try {
-      const [quoteRes, incomeRes, ratiosRes, keyMetricsRes, cashFlowRes, balanceSheetRes] = await Promise.allSettled([
-        fetch(`/api/quote?symbol=${sym}`).then((r) => r.json()),
-        fetch(`/api/fmp?endpoint=income-statement&symbol=${sym}`).then((r) => r.json()),
-        fetch(`/api/fmp?endpoint=ratios&symbol=${sym}`).then((r) => r.json()),
-        fetch(`/api/fmp?endpoint=key-metrics&symbol=${sym}`).then((r) => r.json()),
-        fetch(`/api/fmp?endpoint=cash-flow-statement&symbol=${sym}`).then((r) => r.json()),
-        fetch(`/api/fmp?endpoint=balance-sheet-statement&symbol=${sym}`).then((r) => r.json()),
-      ]);
+    // Fetch with retry for 429 rate limits
+    async function fetchWithRetry(url: string, retries = 2): Promise<unknown> {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        const res = await fetch(url);
+        if (res.status === 429 && attempt < retries) {
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+          continue;
+        }
+        return res.json();
+      }
+      return {};
+    }
 
-      if (quoteRes.status === "fulfilled" && !quoteRes.value.error) {
-        setQuote(quoteRes.value);
+    try {
+      // Quote (Yahoo) fires immediately — no FMP rate limit concern
+      const quoteRes = await fetchWithRetry(`/api/quote?symbol=${sym}`);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const qr = quoteRes as any;
+      if (qr && !qr.error && qr.symbol) {
+        setQuote(qr);
       } else {
-        setError("Failed to fetch quote");
+        setError("Currently loading data…");
       }
 
-      setIncomeStatements(
-        incomeRes.status === "fulfilled" && Array.isArray(incomeRes.value) ? incomeRes.value : []
-      );
+      // FMP calls run sequentially with 300ms gaps to avoid 429
+      const fmpEndpoints = ["income-statement", "ratios", "key-metrics", "cash-flow-statement", "balance-sheet-statement"] as const;
+      const fmpResults: unknown[] = [];
+      for (const ep of fmpEndpoints) {
+        const data = await fetchWithRetry(`/api/fmp?endpoint=${ep}&symbol=${sym}`);
+        fmpResults.push(data);
+        await new Promise((r) => setTimeout(r, 300));
+      }
 
-      const ratiosArr = ratiosRes.status === "fulfilled" && Array.isArray(ratiosRes.value) ? ratiosRes.value : [];
-      const kmArr = keyMetricsRes.status === "fulfilled" && Array.isArray(keyMetricsRes.value) ? keyMetricsRes.value : [];
+      const [incomeData, ratiosData, keyMetricsData, cashFlowData, balanceSheetData] = fmpResults;
+
+      setIncomeStatements(Array.isArray(incomeData) ? incomeData : []);
+
+      const ratiosArr = Array.isArray(ratiosData) ? ratiosData : [];
+      const kmArr = Array.isArray(keyMetricsData) ? keyMetricsData : [];
       setKeyMetrics(ratiosArr.length > 0 ? buildKeyMetrics(ratiosArr, kmArr) : []);
 
-      setCashFlowStatements(
-        cashFlowRes.status === "fulfilled" && Array.isArray(cashFlowRes.value) ? cashFlowRes.value : []
-      );
-      setBalanceSheetStatements(
-        balanceSheetRes.status === "fulfilled" && Array.isArray(balanceSheetRes.value) ? balanceSheetRes.value : []
-      );
+      setCashFlowStatements(Array.isArray(cashFlowData) ? cashFlowData : []);
+      setBalanceSheetStatements(Array.isArray(balanceSheetData) ? balanceSheetData : []);
     } catch {
-      setError("Failed to fetch stock data");
+      setError("Currently loading data…");
     } finally {
       setIsLoading(false);
     }

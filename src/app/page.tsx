@@ -74,7 +74,7 @@ export default function AnalysisPage() {
         <CardContent>
           {incomeStatements.length === 0 && !isLoading ? (
             <p className="text-muted-foreground text-sm">
-              No fundamentals available (FMP API key may not be configured). Showing default projections.
+              No fundamentals available (FMP may be rate-limited). Showing default projections.
             </p>
           ) : null}
           <ProjectionTable

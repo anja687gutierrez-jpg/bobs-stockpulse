@@ -19,28 +19,47 @@ interface PortfolioValueResult {
   isLoading: boolean;
 }
 
-const BATCH_SIZE = 20; // Each Worker invocation handles up to 20 Yahoo calls
+const BATCH_SIZE = 25;
+const CACHE_TTL = 5 * 60_000; // 5 minutes
+const DEBOUNCE_MS = 500;
+const BATCH_DELAY_MS = 200;
 
 async function fetchBatch(
   symbols: string[]
 ): Promise<Record<string, { price: number; change: number }>> {
-  try {
-    const res = await fetch("/api/quotes-batch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbols }),
-    });
-    const data = await res.json();
-    return data.quotes ?? {};
-  } catch {
-    return {};
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch("/api/quotes-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbols }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.quotes ?? {};
+      }
+      // 5xx — retry once after 1s
+      if (res.status >= 500 && attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      return {};
+    } catch {
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      return {};
+    }
   }
+  return {};
 }
 
 export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult {
   const [positions, setPositions] = useState<PositionData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const cacheRef = useRef<Map<string, { price: number; change: number; ts: number }>>(new Map());
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const holdingItems = items.map((i) => i.shares > 0 ? i : { ...i, shares: 1 });
   const holdingKey = holdingItems.map((i) => `${i.ticker}:${i.shares}`).join(",");
@@ -54,9 +73,15 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
     let cancelled = false;
     setIsLoading(true);
 
+    // Debounce: coalesce rapid setItems calls from multi-screenshot processing
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      if (cancelled) return;
+      fetchAll();
+    }, DEBOUNCE_MS);
+
     async function fetchAll() {
       const now = Date.now();
-      const CACHE_TTL = 60_000;
 
       const cached: PositionData[] = [];
       const uncached: PortfolioItem[] = [];
@@ -76,16 +101,21 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
         }
       }
 
-      // Fetch uncached in parallel batches of 20 (max 3 concurrent requests for 56 symbols)
+      // Fetch uncached sequentially — one Worker invocation at a time to avoid contention
       const allQuotes: Record<string, { price: number; change: number }> = {};
       if (uncached.length > 0) {
         const symbolBatches: string[][] = [];
         for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
           symbolBatches.push(uncached.slice(i, i + BATCH_SIZE).map((u) => u.ticker));
         }
-        const results = await Promise.all(symbolBatches.map(fetchBatch));
-        for (const result of results) {
+        for (let i = 0; i < symbolBatches.length; i++) {
+          if (cancelled) return;
+          const result = await fetchBatch(symbolBatches[i]);
           Object.assign(allQuotes, result);
+          // Brief delay between batches to avoid Worker contention
+          if (i < symbolBatches.length - 1) {
+            await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+          }
         }
       }
 
@@ -111,8 +141,10 @@ export function usePortfolioValue(items: PortfolioItem[]): PortfolioValueResult 
       }
     }
 
-    fetchAll();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holdingKey]);
 

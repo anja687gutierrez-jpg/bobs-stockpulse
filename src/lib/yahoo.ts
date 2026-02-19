@@ -2,9 +2,21 @@ import YahooFinance from "yahoo-finance2";
 
 const yahooFinance = new YahooFinance();
 
+async function withRetry<T>(fn: () => Promise<T>, retries = 2, baseDelay = 500): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === retries) throw err;
+      await new Promise((r) => setTimeout(r, baseDelay * 2 ** attempt));
+    }
+  }
+  throw new Error("withRetry: unreachable");
+}
+
 export async function searchStocks(query: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result: any = await yahooFinance.search(query, { quotesCount: 8 });
+  const result: any = await withRetry(() => yahooFinance.search(query, { quotesCount: 8 }));
   const quotes = result.quotes ?? [];
   return quotes
     .filter((q: Record<string, unknown>) => q.symbol && q.quoteType === "EQUITY")
@@ -22,14 +34,14 @@ export async function getQuotesBatch(symbols: string[]): Promise<
   if (symbols.length === 0) return {};
   const results: Record<string, { price: number; change: number }> = {};
 
-  // Process in chunks of 10 to avoid rate limits
-  for (let i = 0; i < symbols.length; i += 10) {
-    const chunk = symbols.slice(i, i + 10);
+  // Process in chunks of 5 to stay well under Cloudflare's 50 subrequest limit
+  for (let i = 0; i < symbols.length; i += 5) {
+    const chunk = symbols.slice(i, i + 5);
     const quotes = await Promise.all(
       chunk.map(async (sym) => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const q: any = await yahooFinance.quote(sym);
+          const q: any = await withRetry(() => yahooFinance.quote(sym));
           return {
             symbol: sym,
             price: q.regularMarketPrice ?? 0,
@@ -50,7 +62,7 @@ export async function getQuotesBatch(symbols: string[]): Promise<
 
 export async function getQuote(symbol: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const q: any = await yahooFinance.quote(symbol);
+  const q: any = await withRetry(() => yahooFinance.quote(symbol));
   return {
     symbol: q.symbol ?? symbol,
     shortName: q.shortName ?? q.symbol ?? symbol,

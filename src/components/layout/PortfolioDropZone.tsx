@@ -8,10 +8,13 @@ interface PortfolioDropZoneProps {
   onExtracted: (items: PortfolioItem[]) => void;
 }
 
+const MAX_SCREENSHOTS = 3;
+
 export function PortfolioDropZone({ onExtracted }: PortfolioDropZoneProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const processFile = useCallback(
     async (file: File): Promise<PortfolioItem[]> => {
@@ -38,9 +41,16 @@ export function PortfolioDropZone({ onExtracted }: PortfolioDropZoneProps) {
     async (files: File[]) => {
       setIsLoading(true);
       setError(null);
+      setWarning(null);
+
+      let toProcess = files;
+      if (toProcess.length > MAX_SCREENSHOTS) {
+        toProcess = toProcess.slice(0, MAX_SCREENSHOTS);
+        setWarning(`Processing first ${MAX_SCREENSHOTS} screenshots — upload more after`);
+      }
 
       try {
-        const settled = await Promise.allSettled(files.map(processFile));
+        const settled = await Promise.allSettled(toProcess.map(processFile));
         const allHoldings: PortfolioItem[] = [];
         let failures = 0;
         for (const result of settled) {
@@ -109,6 +119,7 @@ export function PortfolioDropZone({ onExtracted }: PortfolioDropZoneProps) {
           }}
         />
       </label>
+      {warning && <p className="text-xs text-amber-400 mt-1">{warning}</p>}
       {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
     </div>
   );

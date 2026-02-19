@@ -40,9 +40,18 @@ export async function fetchFmp(endpoint: FmpEndpoint, symbol: string) {
   }
 
   const url = `${FMP_BASE}/${endpoint}?symbol=${symbol}&period=annual&limit=5&apikey=${apiKey}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`FMP API error: ${res.status}`);
+
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await fetch(url);
+    if (res.status === 429 && attempt < 2) {
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      continue;
+    }
+    break;
+  }
+  if (!res || !res.ok) {
+    throw new Error(`FMP API error: ${res?.status ?? "no response"}`);
   }
   const data = await res.json();
   cache.set(cacheKey, { data, timestamp: Date.now() });

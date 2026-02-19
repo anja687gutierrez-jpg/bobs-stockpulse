@@ -47,7 +47,7 @@ export default function MetricsPage() {
         <h3 className="text-lg font-semibold mb-4">12 Mandatory Metrics</h3>
         {keyMetrics.length === 0 && !isLoading ? (
           <p className="text-muted-foreground text-sm">
-            No metrics available. FMP API key may not be configured.
+            No metrics available. FMP may be rate-limited — try again in a moment.
           </p>
         ) : (
           <MetricsGrid keyMetrics={keyMetrics} />
