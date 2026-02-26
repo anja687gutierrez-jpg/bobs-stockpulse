@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     const resend = new Resend(process.env.RESEND_API_KEY);
 
     const { data, error } = await resend.emails.send({
-      from: "StockPulse <onboarding@resend.dev>",
+      from: "StockPulse <notifications@goiconicway.com>",
       to: [to],
       subject,
       html,

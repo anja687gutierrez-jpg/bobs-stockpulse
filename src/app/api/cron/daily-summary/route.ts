@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const { subject, html } = dailySummaryEmail({ portfolio, totalValue, totalChange });
 
     const { data, error } = await resend.emails.send({
-      from: "StockPulse <onboarding@resend.dev>",
+      from: "StockPulse <notifications@goiconicway.com>",
       to: [to],
       subject,
       html,

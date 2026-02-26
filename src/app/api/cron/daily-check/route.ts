@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
           try {
             const { subject, html } = technicalSignalEmail({ signals: allSignals });
             await resend.emails.send({
-              from: "StockPulse <onboarding@resend.dev>",
+              from: "StockPulse <notifications@goiconicway.com>",
               to: [user.email],
               subject,
               html,
@@ -146,7 +146,7 @@ export async function GET(req: NextRequest) {
           if (allEvents.length > 0) {
             const { subject, html } = calendarEventEmail({ events: allEvents });
             await resend.emails.send({
-              from: "StockPulse <onboarding@resend.dev>",
+              from: "StockPulse <notifications@goiconicway.com>",
               to: [user.email],
               subject,
               html,
@@ -200,7 +200,7 @@ export async function GET(req: NextRequest) {
           });
 
           await resend.emails.send({
-            from: "StockPulse <onboarding@resend.dev>",
+            from: "StockPulse <notifications@goiconicway.com>",
             to: [user.email],
             subject,
             html,
