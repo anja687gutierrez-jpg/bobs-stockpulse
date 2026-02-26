@@ -1,20 +1,20 @@
-import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { initializeApp, getApps, cert, type App } from "firebase-admin/app";
+import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import path from "path";
 
-let _app: FirebaseApp | null = null;
+let _app: App | null = null;
 let _db: Firestore | null = null;
 
-function getServerApp(): FirebaseApp {
+function getServerApp(): App {
   if (!_app) {
-    const config = {
-      apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-      authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-      appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-    };
-    _app = getApps().length ? getApp() : initializeApp(config);
+    if (getApps().length > 0) {
+      _app = getApps()[0];
+    } else {
+      const serviceAccountPath = path.join(process.cwd(), "service-account.json");
+      _app = initializeApp({
+        credential: cert(serviceAccountPath),
+      });
+    }
   }
   return _app;
 }

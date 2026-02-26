@@ -26,7 +26,7 @@ export function LoginPage() {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Authentication failed";
-      setError(message.replace("Firebase: ", "").replace(/\(auth\/.*\)/, "").trim());
+      setError(message.replace("Firebase: ", "").replace(/\(auth\/.*\)/, "").trim() || "Authentication failed");
     } finally {
       setLoading(false);
     }

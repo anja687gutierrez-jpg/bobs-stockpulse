@@ -35,8 +35,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     const auth = await getFirebaseAuth();
+    const db = await getFirebaseDb();
     const { signInWithEmailAndPassword } = await import("firebase/auth");
-    await signInWithEmailAndPassword(auth, email, password);
+    const { doc, setDoc } = await import("firebase/firestore");
+
+    const { user: signedInUser } = await signInWithEmailAndPassword(auth, email, password);
+    // Ensure email is persisted in Firestore for cron/notifications
+    try {
+      await setDoc(doc(db, "users", signedInUser.uid), { email: signedInUser.email }, { merge: true });
+    } catch {
+      // Non-blocking — login still works even if Firestore write fails
+    }
   };
 
   const signUp = async (email: string, password: string) => {

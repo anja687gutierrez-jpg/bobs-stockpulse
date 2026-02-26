@@ -29,7 +29,7 @@ export function alertTriggeredEmail(params: {
 }
 
 export function dailySummaryEmail(params: {
-  portfolio: { ticker: string; shares: number; price: number; change: number; value?: number }[];
+  portfolio: { ticker: string; name?: string; shares: number; price: number; change: number; value?: number }[];
   totalValue: number;
   totalChange: number;
 }): { subject: string; html: string } {
@@ -42,7 +42,7 @@ export function dailySummaryEmail(params: {
       (h) => {
         const val = h.value ?? h.shares * h.price;
         return `<tr>
-          <td style="padding: 4px 8px; font-family: monospace; color: #fbbf24;">${h.ticker}</td>
+          <td style="padding: 4px 8px;"><span style="font-family: monospace; color: #fbbf24;">${h.ticker}</span>${h.name && h.name !== h.ticker ? `<br/><span style="color: #6b7280; font-size: 11px;">${h.name}</span>` : ""}</td>
           <td style="padding: 4px 8px; text-align: right;">${h.shares}</td>
           <td style="padding: 4px 8px; text-align: right;">$${h.price.toFixed(2)}</td>
           <td style="padding: 4px 8px; text-align: right;">$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -177,7 +177,7 @@ export function calendarEventEmail(params: {
 }
 
 export function enhancedDailySummaryEmail(params: {
-  portfolio: { ticker: string; shares: number; price: number; change: number; value?: number }[];
+  portfolio: { ticker: string; name?: string; shares: number; price: number; change: number; value?: number }[];
   totalValue: number;
   totalChange: number;
   signals?: TechnicalSignal[];
@@ -192,7 +192,7 @@ export function enhancedDailySummaryEmail(params: {
       (h) => {
         const val = h.value ?? h.shares * h.price;
         return `<tr>
-          <td style="padding: 4px 8px; font-family: monospace; color: #fbbf24;">${h.ticker}</td>
+          <td style="padding: 4px 8px;"><span style="font-family: monospace; color: #fbbf24;">${h.ticker}</span>${h.name && h.name !== h.ticker ? `<br/><span style="color: #6b7280; font-size: 11px;">${h.name}</span>` : ""}</td>
           <td style="padding: 4px 8px; text-align: right;">${h.shares}</td>
           <td style="padding: 4px 8px; text-align: right;">$${h.price.toFixed(2)}</td>
           <td style="padding: 4px 8px; text-align: right;">$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

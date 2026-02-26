@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import YahooFinance from "yahoo-finance2";
 import { getServerDb } from "@/lib/firebase-server";
-import { collection, getDocs } from "firebase/firestore";
 import { checkTechnicalSignals } from "@/lib/signals";
 import { getUpcomingEvents, filterReminders } from "@/lib/calendar";
 import {
@@ -30,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // Fetch all users
-    const usersSnap = await getDocs(collection(db, "users"));
+    const usersSnap = await db.collection("users").get();
     const users: {
       uid: string;
       email: string;
@@ -60,9 +59,11 @@ export async function GET(req: NextRequest) {
       stats.checked++;
 
       // Fetch user's portfolio tickers
-      const portfolioSnap = await getDocs(
-        collection(db, "users", user.uid, "portfolio")
-      );
+      const portfolioSnap = await db
+        .collection("users")
+        .doc(user.uid)
+        .collection("portfolio")
+        .get();
       const portfolio: { ticker: string; shares: number }[] = [];
       for (const doc of portfolioSnap.docs) {
         const d = doc.data();
@@ -156,13 +157,14 @@ export async function GET(req: NextRequest) {
                 const price = q.regularMarketPrice ?? 0;
                 return {
                   ticker: p.ticker,
+                  name: q.shortName ?? q.longName ?? p.ticker,
                   shares: p.shares,
                   price,
                   change: q.regularMarketChangePercent ?? 0,
                   value: p.shares * price,
                 };
               } catch {
-                return { ticker: p.ticker, shares: p.shares, price: 0, change: 0, value: 0 };
+                return { ticker: p.ticker, name: p.ticker, shares: p.shares, price: 0, change: 0, value: 0 };
               }
             })
           );

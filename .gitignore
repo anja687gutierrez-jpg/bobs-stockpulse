@@ -38,6 +38,7 @@ yarn-error.log*
 
 # firebase
 .firebase/
+service-account.json
 
 # cloudflare
 .open-next/
