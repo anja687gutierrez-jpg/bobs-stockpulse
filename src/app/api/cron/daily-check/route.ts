@@ -13,6 +13,8 @@ import type { NotificationPrefs, EmailFrequency, TechnicalSignal, CalendarEvent 
 
 const yahooFinance = new YahooFinance();
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 function shouldSendToday(frequency: EmailFrequency): boolean {
   const day = new Date().getUTCDay(); // 0=Sun, 6=Sat
   if (frequency === "daily") return true;
@@ -125,6 +127,7 @@ export async function GET(req: NextRequest) {
               html,
             });
             stats.sent++;
+            await sleep(1000);
           } catch {
             stats.errors++;
           }
@@ -152,6 +155,7 @@ export async function GET(req: NextRequest) {
               html,
             });
             stats.sent++;
+            await sleep(1000);
           }
         } catch {
           stats.errors++;
@@ -206,6 +210,7 @@ export async function GET(req: NextRequest) {
             html,
           });
           stats.sent++;
+          await sleep(1000);
         } catch {
           stats.errors++;
         }
