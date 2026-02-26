@@ -155,6 +155,8 @@ export interface MetricDefinition {
   higherIsBetter: boolean;
 }
 
+export type EmailFrequency = "daily" | "weekdays" | "weekly";
+
 export interface NotificationPrefs {
   emailAlerts: boolean;
   emailSummary: boolean;
@@ -163,6 +165,7 @@ export interface NotificationPrefs {
   earningsAlerts: boolean;
   dividendAlerts: boolean;
   swingAlerts: boolean;
+  emailFrequency: EmailFrequency;
 }
 
 export type SignalType = "buy" | "sell" | "attention" | "swing";

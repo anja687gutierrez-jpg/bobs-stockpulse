@@ -9,9 +9,17 @@ import {
   calendarEventEmail,
   enhancedDailySummaryEmail,
 } from "@/lib/email-templates";
-import type { NotificationPrefs, TechnicalSignal, CalendarEvent } from "@/lib/types";
+import type { NotificationPrefs, EmailFrequency, TechnicalSignal, CalendarEvent } from "@/lib/types";
 
 const yahooFinance = new YahooFinance();
+
+function shouldSendToday(frequency: EmailFrequency): boolean {
+  const day = new Date().getUTCDay(); // 0=Sun, 6=Sat
+  if (frequency === "daily") return true;
+  if (frequency === "weekdays") return day >= 1 && day <= 5;
+  if (frequency === "weekly") return day === 1; // Monday only
+  return true;
+}
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -50,6 +58,7 @@ export async function GET(req: NextRequest) {
           earningsAlerts: true,
           dividendAlerts: true,
           swingAlerts: true,
+          emailFrequency: "weekdays" as EmailFrequency,
           ...data.notificationPrefs,
         },
       });
@@ -57,6 +66,9 @@ export async function GET(req: NextRequest) {
 
     for (const user of users) {
       stats.checked++;
+
+      // Skip if user's frequency doesn't match today
+      if (!shouldSendToday(user.prefs.emailFrequency)) continue;
 
       // Fetch user's portfolio tickers
       const portfolioSnap = await db

@@ -13,6 +13,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
   earningsAlerts: true,
   dividendAlerts: true,
   swingAlerts: true,
+  emailFrequency: "weekdays",
 };
 
 export function useNotificationPrefs() {
@@ -46,9 +47,9 @@ export function useNotificationPrefs() {
     return () => unsubscribe?.();
   }, [user]);
 
-  const updatePref = async (key: keyof NotificationPrefs, value: boolean) => {
+  const updatePref = async (key: keyof NotificationPrefs, value: boolean | string) => {
     if (!user) return;
-    setPrefs((prev) => ({ ...prev, [key]: value }));
+    setPrefs((prev) => ({ ...prev, [key]: value } as NotificationPrefs));
 
     const db = await getFirebaseDb();
     const { doc, updateDoc } = await import("firebase/firestore");

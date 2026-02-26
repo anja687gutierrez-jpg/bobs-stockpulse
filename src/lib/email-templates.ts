@@ -1,5 +1,17 @@
 import type { TechnicalSignal, CalendarEvent } from "./types";
 
+const APP_URL = "https://bobs-stockpulse.anja687gutierrez.workers.dev";
+
+const emailFooter = `
+  <div style="margin-top: 20px; padding: 16px; background: #2c2c2e; border-radius: 8px; text-align: center;">
+    <p style="margin: 0 0 8px; color: #9ca3af; font-size: 13px;">Know someone who'd find this useful?</p>
+    <a href="${APP_URL}" style="display: inline-block; padding: 8px 20px; background: #fbbf24; color: #000; font-weight: 600; font-size: 13px; text-decoration: none; border-radius: 6px;">Try StockPulse Free</a>
+  </div>
+  <hr style="border: none; border-top: 1px solid #374151; margin: 16px 0;" />
+  <p style="margin: 0; color: #6b7280; font-size: 12px;">
+    Bob's StockPulse — 1000X Stock Analysis
+  </p>`;
+
 export function alertTriggeredEmail(params: {
   ticker: string;
   currentPrice: number;
@@ -19,10 +31,7 @@ export function alertTriggeredEmail(params: {
         <p style="margin: 0 0 16px; color: #9ca3af; font-size: 14px;">
           Your target: $${targetPrice.toFixed(2)} (${direction})
         </p>
-        <hr style="border: none; border-top: 1px solid #374151; margin: 16px 0;" />
-        <p style="margin: 0; color: #6b7280; font-size: 12px;">
-          Bob's StockPulse — 1000X Stock Analysis
-        </p>
+        ${emailFooter}
       </div>
     `,
   };
@@ -74,10 +83,7 @@ export function dailySummaryEmail(params: {
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        <hr style="border: none; border-top: 1px solid #374151; margin: 16px 0;" />
-        <p style="margin: 0; color: #6b7280; font-size: 12px;">
-          Bob's StockPulse — 1000X Stock Analysis
-        </p>
+        ${emailFooter}
       </div>
     `,
   };
@@ -124,10 +130,7 @@ export function technicalSignalEmail(params: {
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        <hr style="border: none; border-top: 1px solid #374151; margin: 16px 0;" />
-        <p style="margin: 0; color: #6b7280; font-size: 12px;">
-          Bob's StockPulse — 1000X Stock Analysis
-        </p>
+        ${emailFooter}
       </div>
     `,
   };
@@ -167,10 +170,7 @@ export function calendarEventEmail(params: {
           </thead>
           <tbody>${rows}</tbody>
         </table>
-        <hr style="border: none; border-top: 1px solid #374151; margin: 16px 0;" />
-        <p style="margin: 0; color: #6b7280; font-size: 12px;">
-          Bob's StockPulse — 1000X Stock Analysis
-        </p>
+        ${emailFooter}
       </div>
     `,
   };
@@ -265,10 +265,7 @@ export function enhancedDailySummaryEmail(params: {
         </table>
         ${signalsSection}
         ${eventsSection}
-        <hr style="border: none; border-top: 1px solid #374151; margin: 16px 0;" />
-        <p style="margin: 0; color: #6b7280; font-size: 12px;">
-          Bob's StockPulse — 1000X Stock Analysis
-        </p>
+        ${emailFooter}
       </div>
     `,
   };

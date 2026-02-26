@@ -10,10 +10,11 @@ import {
   ChevronDown,
   ChevronRight,
   TrendingUp,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotificationPrefs } from "@/hooks/useNotificationPrefs";
-import type { NotificationPrefs } from "@/lib/types";
+import type { NotificationPrefs, EmailFrequency } from "@/lib/types";
 
 interface SettingRow {
   key: keyof NotificationPrefs;
@@ -117,6 +118,35 @@ export function NotificationSettings() {
               </button>
             </div>
           ))}
+
+          {/* Email frequency */}
+          <div className="pt-2 border-t border-border/50">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <p className="text-xs font-medium text-foreground">Frequency</p>
+            </div>
+            <div className="flex gap-1 ml-5.5">
+              {([
+                { value: "daily", label: "Daily" },
+                { value: "weekdays", label: "Weekdays" },
+                { value: "weekly", label: "Weekly" },
+              ] as { value: EmailFrequency; label: string }[]).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => updatePref("emailFrequency", opt.value)}
+                  disabled={loading}
+                  className={cn(
+                    "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+                    prefs.emailFrequency === opt.value
+                      ? "bg-amber-400 text-black"
+                      : "bg-muted-foreground/20 text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
