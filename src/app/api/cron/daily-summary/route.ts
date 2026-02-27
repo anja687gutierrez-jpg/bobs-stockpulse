@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dailySummaryEmail } from "@/lib/email-templates";
-import { Resend } from "resend";
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,8 +13,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "RESEND_API_KEY not configured" }, { status: 500 });
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
-
     const totalValue = portfolio.reduce(
       (sum: number, h: { shares: number; price: number }) => sum + h.shares * h.price,
       0
@@ -27,18 +24,27 @@ export async function POST(req: NextRequest) {
 
     const { subject, html } = dailySummaryEmail({ portfolio, totalValue, totalChange });
 
-    const { data, error } = await resend.emails.send({
-      from: "StockPulse <notifications@goiconicway.com>",
-      to: [to],
-      subject,
-      html,
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "StockPulse <notifications@goiconicway.com>",
+        to: [to],
+        subject,
+        html,
+      }),
     });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: res.statusText }));
+      return NextResponse.json({ error: body.message ?? res.statusText }, { status: res.status });
     }
 
-    return NextResponse.json({ id: data?.id });
+    const data = await res.json();
+    return NextResponse.json({ id: data.id });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Summary send failed";
     return NextResponse.json({ error: message }, { status: 500 });

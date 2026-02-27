@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Resend } from "resend";
 import YahooFinance from "yahoo-finance2";
 import { getServerDb } from "@/lib/firebase-server";
 import { checkTechnicalSignals } from "@/lib/signals";
 import { getUpcomingEvents, filterReminders } from "@/lib/calendar";
-import {
-  technicalSignalEmail,
-  calendarEventEmail,
-  enhancedDailySummaryEmail,
-} from "@/lib/email-templates";
+import { enhancedDailySummaryEmail } from "@/lib/email-templates";
 import type { NotificationPrefs, EmailFrequency, TechnicalSignal, CalendarEvent } from "@/lib/types";
 
 const yahooFinance = new YahooFinance();
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Cloudflare Workers free plan: 50 subrequests per invocation.
+// Budget: 1 OAuth + 1 Firestore users + per user (1 portfolio + signals + 2 calendar + quotes + 1 email)
+// Cap expensive operations to stay under the limit.
+const MAX_SIGNAL_TICKERS = 5;
+const MAX_QUOTE_TICKERS = 15;
 
 function shouldSendToday(frequency: EmailFrequency): boolean {
   const day = new Date().getUTCDay(); // 0=Sun, 6=Sat
@@ -33,9 +34,38 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "RESEND_API_KEY not configured" }, { status: 500 });
   }
 
-  const resend = new Resend(process.env.RESEND_API_KEY);
+  const resendApiKey = process.env.RESEND_API_KEY;
   const db = getServerDb();
-  const stats = { checked: 0, sent: 0, errors: 0 };
+  const stats = { checked: 0, sent: 0, errors: 0, details: [] as string[] };
+
+  async function sendEmail(to: string, subject: string, html: string) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "StockPulse <notifications@goiconicway.com>",
+          to: [to],
+          subject,
+          html,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        stats.errors++;
+        stats.details.push(`${to}: ${res.status} ${body}`);
+      } else {
+        stats.sent++;
+      }
+    } catch (err) {
+      stats.errors++;
+      stats.details.push(`${to}: fetch error - ${err instanceof Error ? err.message : String(err)}`);
+    }
+    await sleep(500);
+  }
 
   try {
     // Fetch all users
@@ -87,10 +117,11 @@ export async function GET(req: NextRequest) {
       if (portfolio.length === 0) continue;
       const tickers = portfolio.map((p) => p.ticker);
 
-      // Technical signals
+      // Technical signals (capped to conserve subrequests)
       let allSignals: TechnicalSignal[] = [];
       if (user.prefs.signalAlerts) {
-        for (const ticker of tickers) {
+        const signalTickers = tickers.slice(0, MAX_SIGNAL_TICKERS);
+        for (const ticker of signalTickers) {
           try {
             const period1 = new Date();
             period1.setDate(period1.getDate() - 220);
@@ -116,25 +147,9 @@ export async function GET(req: NextRequest) {
         if (!user.prefs.swingAlerts) {
           allSignals = allSignals.filter((s) => s.type !== "swing");
         }
-
-        if (allSignals.length > 0) {
-          try {
-            const { subject, html } = technicalSignalEmail({ signals: allSignals });
-            await resend.emails.send({
-              from: "StockPulse <notifications@goiconicway.com>",
-              to: [user.email],
-              subject,
-              html,
-            });
-            stats.sent++;
-            await sleep(1000);
-          } catch {
-            stats.errors++;
-          }
-        }
       }
 
-      // Calendar events
+      // Calendar events (2 fetch calls total regardless of ticker count)
       let allEvents: CalendarEvent[] = [];
       if (user.prefs.earningsAlerts || user.prefs.dividendAlerts) {
         try {
@@ -145,75 +160,68 @@ export async function GET(req: NextRequest) {
             if (e.event === "dividend") return user.prefs.dividendAlerts;
             return false;
           });
-
-          if (allEvents.length > 0) {
-            const { subject, html } = calendarEventEmail({ events: allEvents });
-            await resend.emails.send({
-              from: "StockPulse <notifications@goiconicway.com>",
-              to: [user.email],
-              subject,
-              html,
-            });
-            stats.sent++;
-            await sleep(1000);
-          }
         } catch {
-          stats.errors++;
+          // Calendar errors are non-critical
         }
       }
 
-      // Enhanced daily summary
-      if (user.prefs.emailSummary) {
-        try {
-          const portfolioWithQuotes = await Promise.all(
-            portfolio.map(async (p) => {
-              try {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const q: any = await yahooFinance.quote(p.ticker);
-                const price = q.regularMarketPrice ?? 0;
-                return {
-                  ticker: p.ticker,
-                  name: q.shortName ?? q.longName ?? p.ticker,
-                  shares: p.shares,
-                  price,
-                  change: q.regularMarketChangePercent ?? 0,
-                  value: p.shares * price,
-                };
-              } catch {
-                return { ticker: p.ticker, name: p.ticker, shares: p.shares, price: 0, change: 0, value: 0 };
-              }
-            })
-          );
+      // Daily summary with quotes (capped to conserve subrequests)
+      try {
+        const quoteTickers = portfolio.slice(0, MAX_QUOTE_TICKERS);
+        const portfolioWithQuotes = await Promise.all(
+          quoteTickers.map(async (p) => {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const q: any = await yahooFinance.quote(p.ticker);
+              const price = q.regularMarketPrice ?? 0;
+              return {
+                ticker: p.ticker,
+                name: q.shortName ?? q.longName ?? p.ticker,
+                shares: p.shares,
+                price,
+                change: q.regularMarketChangePercent ?? 0,
+                value: p.shares * price,
+              };
+            } catch {
+              return { ticker: p.ticker, name: p.ticker, shares: p.shares, price: 0, change: 0, value: 0 };
+            }
+          })
+        );
 
-          const totalValue = portfolioWithQuotes.reduce(
-            (sum, h) => sum + h.shares * h.price,
-            0
-          );
-          const totalChange =
-            portfolioWithQuotes.length > 0
-              ? portfolioWithQuotes.reduce((sum, h) => sum + h.change, 0) /
-                portfolioWithQuotes.length
-              : 0;
-
-          const { subject, html } = enhancedDailySummaryEmail({
-            portfolio: portfolioWithQuotes,
-            totalValue,
-            totalChange,
-            signals: allSignals.length > 0 ? allSignals : undefined,
-            events: allEvents.length > 0 ? allEvents : undefined,
+        // Add remaining tickers without quotes
+        for (let i = MAX_QUOTE_TICKERS; i < portfolio.length; i++) {
+          portfolioWithQuotes.push({
+            ticker: portfolio[i].ticker,
+            name: portfolio[i].ticker,
+            shares: portfolio[i].shares,
+            price: 0,
+            change: 0,
+            value: 0,
           });
-
-          await resend.emails.send({
-            from: "StockPulse <notifications@goiconicway.com>",
-            to: [user.email],
-            subject,
-            html,
-          });
-          stats.sent++;
-          await sleep(1000);
-        } catch {
-          stats.errors++;
         }
+
+        const quotedHoldings = portfolioWithQuotes.filter((h) => h.price > 0);
+        const totalValue = quotedHoldings.reduce(
+          (sum, h) => sum + h.value,
+          0
+        );
+        const totalChange =
+          quotedHoldings.length > 0
+            ? quotedHoldings.reduce((sum, h) => sum + h.change, 0) /
+              quotedHoldings.length
+            : 0;
+
+        const { subject, html } = enhancedDailySummaryEmail({
+          portfolio: portfolioWithQuotes.filter((h) => h.price > 0),
+          totalValue,
+          totalChange,
+          signals: allSignals.length > 0 ? allSignals : undefined,
+          events: allEvents.length > 0 ? allEvents : undefined,
+        });
+
+        await sendEmail(user.email, subject, html);
+      } catch {
+        stats.errors++;
       }
     }
 
