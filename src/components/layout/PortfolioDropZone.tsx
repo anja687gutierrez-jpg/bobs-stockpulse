@@ -55,9 +55,10 @@ export function PortfolioDropZone({ onExtracted, onDocumentAnalyzed }: Portfolio
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      onDocumentAnalyzed(data.analysis);
+      if (data.analysis) onDocumentAnalyzed(data.analysis);
+      if (data.holdings?.length > 0) onExtracted(data.holdings);
     },
-    [toBase64, onDocumentAnalyzed]
+    [toBase64, onDocumentAnalyzed, onExtracted]
   );
 
   const processImages = useCallback(
@@ -97,21 +98,24 @@ export function PortfolioDropZone({ onExtracted, onDocumentAnalyzed }: Portfolio
       const pdfs = files.filter(isPdf);
       const images = files.filter((f) => f.type.startsWith("image/"));
 
+      const hasPdfs = pdfs.length > 0;
+      const hasImages = images.length > 0;
+
       try {
-        if (pdfs.length > 0) {
+        if (hasPdfs) {
           setLoadingType("pdf");
           // Process first PDF only
           await processPdf(pdfs[0]);
         }
-        if (images.length > 0) {
+        if (hasImages) {
           setLoadingType("image");
           await processImages(images);
         }
-        if (pdfs.length === 0 && images.length === 0) {
+        if (!hasPdfs && !hasImages) {
           setError("Unsupported file type — use images or PDFs");
         }
       } catch {
-        setError(loadingType === "pdf" ? "Failed to analyze document" : "Failed to extract portfolio");
+        setError(hasPdfs ? "Failed to analyze document" : "Failed to extract portfolio");
       } finally {
         setIsLoading(false);
       }
