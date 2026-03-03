@@ -65,6 +65,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signalAlerts: true,
         earningsAlerts: true,
         dividendAlerts: true,
+        swingAlerts: true,
+        emailFrequency: "weekdays",
       },
     });
   };

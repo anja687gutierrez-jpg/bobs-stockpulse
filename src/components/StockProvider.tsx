@@ -5,6 +5,7 @@ import { useStock } from "@/hooks/useStock";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useAlerts, type PriceAlert } from "@/hooks/useAlerts";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useNotificationPrefs } from "@/hooks/useNotificationPrefs";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { alertTriggeredEmail } from "@/lib/email-templates";
@@ -42,6 +43,7 @@ export function StockProvider({ children }: { children: ReactNode }) {
   const portfolio = usePortfolio(user?.uid ?? null);
   const { alerts, createAlert, triggerAlert, deleteAlert } = useAlerts(user?.uid ?? null);
   const { showNotification, requestPermission } = useNotifications();
+  const { prefs } = useNotificationPrefs();
   const triggeredIds = useRef<Set<string>>(new Set());
 
   const selectSymbol = useCallback((symbol: string) => {
@@ -77,19 +79,32 @@ export function StockProvider({ children }: { children: ReactNode }) {
         showNotification(`${alert.ticker} Alert Triggered`, { body: msg });
         toast.success(`${alert.ticker} Alert Triggered`, { description: msg });
 
-        // Send email notification (fire-and-forget)
-        if (user?.email) {
+        // Send email notification (fire-and-forget) — only if user has emailAlerts enabled
+        if (user?.email && prefs.emailAlerts) {
           const { subject, html } = alertTriggeredEmail({
             ticker: alert.ticker,
             currentPrice: price,
             targetPrice: alert.targetPrice,
             direction: alert.direction,
           });
-          fetch("/api/notifications/send-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ to: user.email, subject, html }),
-          }).catch(() => {});
+          (async () => {
+            try {
+              const { getFirebaseAuth } = await import("@/lib/firebase");
+              const auth = await getFirebaseAuth();
+              const idToken = await auth.currentUser?.getIdToken();
+              if (!idToken) return;
+              await fetch("/api/notifications/send-email", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({ to: user.email, subject, html }),
+              });
+            } catch {
+              // fire-and-forget — silently ignore failures
+            }
+          })();
         }
       }
     }

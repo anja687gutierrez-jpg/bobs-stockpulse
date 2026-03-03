@@ -1,0 +1,28 @@
+name: Daily Stock Check
+
+on:
+  schedule:
+    # 10 PM UTC weekdays (2 PM PT / 5 PM ET — after market close)
+    - cron: "0 22 * * 1-5"
+  workflow_dispatch: # Manual trigger from GitHub UI
+
+jobs:
+  daily-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger daily check
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://bobs-stockpulse.anja687gutierrez.workers.dev/api/cron/daily-check")
+
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+
+          echo "Status: $http_code"
+          echo "Response: $body"
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "::error::Daily check failed with status $http_code"
+            exit 1
+          fi
