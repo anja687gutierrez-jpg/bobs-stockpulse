@@ -185,3 +185,22 @@ export interface CalendarEvent {
   daysUntil: number;
   details?: string;
 }
+
+export interface GapAlert {
+  ticker: string;
+  name: string;
+  previousClose: number;
+  currentPrice: number;
+  gapPercent: number;
+  direction: "up" | "down";
+}
+
+export interface MarketMover {
+  ticker: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  marketCap: number;
+}

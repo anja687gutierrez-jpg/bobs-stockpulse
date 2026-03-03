@@ -3,18 +3,21 @@ import YahooFinance from "yahoo-finance2";
 import { getServerDb } from "@/lib/firebase-server";
 import { checkTechnicalSignals } from "@/lib/signals";
 import { getUpcomingEvents, filterReminders } from "@/lib/calendar";
-import { enhancedDailySummaryEmail } from "@/lib/email-templates";
-import type { NotificationPrefs, EmailFrequency, TechnicalSignal, CalendarEvent } from "@/lib/types";
+import { eveningScanEmail, morningBriefEmail, marketMoversEmail } from "@/lib/email-templates";
+import type { NotificationPrefs, EmailFrequency, TechnicalSignal, CalendarEvent, GapAlert, MarketMover } from "@/lib/types";
 
 const yahooFinance = new YahooFinance();
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Cloudflare Workers free plan: 50 subrequests per invocation.
-// Budget: 1 OAuth + 1 Firestore users + per user (1 portfolio + signals + 2 calendar + quotes + 1 email)
-// Cap expensive operations to stay under the limit.
-const MAX_SIGNAL_TICKERS = 5;
-const MAX_QUOTE_TICKERS = 15;
+// Evening: 1 OAuth + 1 users + 1 portfolio + 44 historical + 2 calendar + 1 email = 50
+// Morning: 1 OAuth + 1 users + 1 portfolio + 46 quotes + 1 email = 50
+const MAX_EVENING_TICKERS = 44;
+const MAX_MORNING_TICKERS = 46;
+const GAP_THRESHOLD = 2; // percent
+
+type ScanMode = "evening" | "morning" | "movers";
 
 function shouldSendToday(frequency: EmailFrequency): boolean {
   const day = new Date().getUTCDay(); // 0=Sun, 6=Sat
@@ -34,9 +37,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "RESEND_API_KEY not configured" }, { status: 500 });
   }
 
+  const mode: ScanMode = (req.nextUrl.searchParams.get("mode") as ScanMode) || "evening";
   const resendApiKey = process.env.RESEND_API_KEY;
   const db = getServerDb();
-  const stats = { checked: 0, sent: 0, errors: 0, details: [] as string[] };
+  const stats = { mode, checked: 0, sent: 0, errors: 0, details: [] as string[] };
 
   async function sendEmail(to: string, subject: string, html: string) {
     try {
@@ -114,114 +118,18 @@ export async function GET(req: NextRequest) {
         portfolio.push({ ticker: doc.id, shares: d.shares ?? 0 });
       }
 
+      if (mode === "movers") {
+        const tickers = new Set(portfolio.map((p) => p.ticker));
+        await runMoversScan(user, tickers, sendEmail);
+        continue;
+      }
+
       if (portfolio.length === 0) continue;
-      const tickers = portfolio.map((p) => p.ticker);
 
-      // Technical signals (capped to conserve subrequests)
-      let allSignals: TechnicalSignal[] = [];
-      if (user.prefs.signalAlerts) {
-        const signalTickers = tickers.slice(0, MAX_SIGNAL_TICKERS);
-        for (const ticker of signalTickers) {
-          try {
-            const period1 = new Date();
-            period1.setDate(period1.getDate() - 220);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const hist: any[] = await yahooFinance.historical(ticker, {
-              period1,
-              period2: new Date(),
-            });
-            if (hist.length > 0) {
-              const history = hist.map((h) => ({
-                close: h.close ?? 0,
-                volume: h.volume ?? 0,
-              }));
-              const signals = checkTechnicalSignals(ticker, history);
-              allSignals.push(...signals);
-            }
-          } catch {
-            // Skip ticker on error
-          }
-        }
-
-        // Filter out swing signals if user hasn't opted in
-        if (!user.prefs.swingAlerts) {
-          allSignals = allSignals.filter((s) => s.type !== "swing");
-        }
-      }
-
-      // Calendar events (2 fetch calls total regardless of ticker count)
-      let allEvents: CalendarEvent[] = [];
-      if (user.prefs.earningsAlerts || user.prefs.dividendAlerts) {
-        try {
-          const events = await getUpcomingEvents(tickers);
-          const reminders = filterReminders(events);
-          allEvents = reminders.filter((e) => {
-            if (e.event === "earnings") return user.prefs.earningsAlerts;
-            if (e.event === "dividend") return user.prefs.dividendAlerts;
-            return false;
-          });
-        } catch {
-          // Calendar errors are non-critical
-        }
-      }
-
-      // Daily summary with quotes (capped to conserve subrequests)
-      try {
-        const quoteTickers = portfolio.slice(0, MAX_QUOTE_TICKERS);
-        const portfolioWithQuotes = await Promise.all(
-          quoteTickers.map(async (p) => {
-            try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const q: any = await yahooFinance.quote(p.ticker);
-              const price = q.regularMarketPrice ?? 0;
-              return {
-                ticker: p.ticker,
-                name: q.shortName ?? q.longName ?? p.ticker,
-                shares: p.shares,
-                price,
-                change: q.regularMarketChangePercent ?? 0,
-                value: p.shares * price,
-              };
-            } catch {
-              return { ticker: p.ticker, name: p.ticker, shares: p.shares, price: 0, change: 0, value: 0 };
-            }
-          })
-        );
-
-        // Add remaining tickers without quotes
-        for (let i = MAX_QUOTE_TICKERS; i < portfolio.length; i++) {
-          portfolioWithQuotes.push({
-            ticker: portfolio[i].ticker,
-            name: portfolio[i].ticker,
-            shares: portfolio[i].shares,
-            price: 0,
-            change: 0,
-            value: 0,
-          });
-        }
-
-        const quotedHoldings = portfolioWithQuotes.filter((h) => h.price > 0);
-        const totalValue = quotedHoldings.reduce(
-          (sum, h) => sum + h.value,
-          0
-        );
-        const totalChange =
-          quotedHoldings.length > 0
-            ? quotedHoldings.reduce((sum, h) => sum + h.change, 0) /
-              quotedHoldings.length
-            : 0;
-
-        const { subject, html } = enhancedDailySummaryEmail({
-          portfolio: portfolioWithQuotes.filter((h) => h.price > 0),
-          totalValue,
-          totalChange,
-          signals: allSignals.length > 0 ? allSignals : undefined,
-          events: allEvents.length > 0 ? allEvents : undefined,
-        });
-
-        await sendEmail(user.email, subject, html);
-      } catch {
-        stats.errors++;
+      if (mode === "evening") {
+        await runEveningScan(user, portfolio, sendEmail);
+      } else {
+        await runMorningScan(user, portfolio, sendEmail);
       }
     }
 
@@ -230,4 +138,248 @@ export async function GET(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Daily check failed";
     return NextResponse.json({ error: message, ...stats }, { status: 500 });
   }
+}
+
+async function runEveningScan(
+  user: { uid: string; email: string; prefs: NotificationPrefs },
+  portfolio: { ticker: string; shares: number }[],
+  sendEmail: (to: string, subject: string, html: string) => Promise<void>
+) {
+  const tickers = portfolio.map((p) => p.ticker);
+
+  // We need a rough sort by portfolio value. First pass: fetch historical for top tickers
+  // and extract closing price to sort. We'll use the historical data for signals too.
+  const scanTickers = tickers.slice(0, MAX_EVENING_TICKERS);
+
+  // Fetch historical data for all scanned tickers (1 subrequest each)
+  const period1 = new Date();
+  period1.setDate(period1.getDate() - 220);
+
+  const tickerData: Map<string, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    history: any[];
+    lastClose: number;
+    prevClose: number;
+  }> = new Map();
+
+  for (const ticker of scanTickers) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const hist: any[] = await yahooFinance.historical(ticker, {
+        period1,
+        period2: new Date(),
+      });
+      if (hist.length > 0) {
+        const lastEntry = hist[hist.length - 1];
+        const prevEntry = hist.length > 1 ? hist[hist.length - 2] : lastEntry;
+        tickerData.set(ticker, {
+          history: hist,
+          lastClose: lastEntry.close ?? 0,
+          prevClose: prevEntry.close ?? 0,
+        });
+      }
+    } catch {
+      // Skip ticker on error
+    }
+  }
+
+  // Sort portfolio by estimated value (shares * lastClose) descending
+  const portfolioWithValue = portfolio.map((p) => {
+    const data = tickerData.get(p.ticker);
+    const lastClose = data?.lastClose ?? 0;
+    return { ...p, estimatedValue: p.shares * lastClose, hasData: !!data };
+  });
+  portfolioWithValue.sort((a, b) => b.estimatedValue - a.estimatedValue);
+
+  // Run technical signals on tickers that have data
+  let allSignals: TechnicalSignal[] = [];
+  if (user.prefs.signalAlerts) {
+    for (const item of portfolioWithValue) {
+      const data = tickerData.get(item.ticker);
+      if (!data || data.history.length === 0) continue;
+      try {
+        const history = data.history.map((h) => ({
+          close: h.close ?? 0,
+          volume: h.volume ?? 0,
+        }));
+        const signals = checkTechnicalSignals(item.ticker, history);
+        allSignals.push(...signals);
+      } catch {
+        // Skip on error
+      }
+    }
+
+    if (!user.prefs.swingAlerts) {
+      allSignals = allSignals.filter((s) => s.type !== "swing");
+    }
+  }
+
+  // Calendar events (2 fetch calls total)
+  let allEvents: CalendarEvent[] = [];
+  if (user.prefs.earningsAlerts || user.prefs.dividendAlerts) {
+    try {
+      const events = await getUpcomingEvents(tickers);
+      const reminders = filterReminders(events);
+      allEvents = reminders.filter((e) => {
+        if (e.event === "earnings") return user.prefs.earningsAlerts;
+        if (e.event === "dividend") return user.prefs.dividendAlerts;
+        return false;
+      });
+    } catch {
+      // Calendar errors are non-critical
+    }
+  }
+
+  // Build holdings list for email
+  const holdings = portfolioWithValue.map((p) => {
+    const data = tickerData.get(p.ticker);
+    if (!data) {
+      return {
+        ticker: p.ticker,
+        name: p.ticker,
+        shares: p.shares,
+        price: 0,
+        change: 0,
+        value: 0,
+        scanned: false,
+      };
+    }
+    const change = data.prevClose > 0
+      ? ((data.lastClose - data.prevClose) / data.prevClose) * 100
+      : 0;
+    return {
+      ticker: p.ticker,
+      name: p.ticker,
+      shares: p.shares,
+      price: data.lastClose,
+      change,
+      value: p.shares * data.lastClose,
+      scanned: true,
+    };
+  });
+
+  const scannedHoldings = holdings.filter((h) => h.scanned);
+  const totalValue = scannedHoldings.reduce((sum, h) => sum + h.value, 0);
+  const totalChange = scannedHoldings.length > 0
+    ? scannedHoldings.reduce((sum, h) => sum + h.change, 0) / scannedHoldings.length
+    : 0;
+
+  const { subject, html } = eveningScanEmail({
+    holdings,
+    totalValue,
+    totalChange,
+    signals: allSignals,
+    events: allEvents,
+    scannedCount: scannedHoldings.length,
+    totalCount: portfolio.length,
+  });
+
+  await sendEmail(user.email, subject, html);
+}
+
+async function runMorningScan(
+  user: { uid: string; email: string; prefs: NotificationPrefs },
+  portfolio: { ticker: string; shares: number }[],
+  sendEmail: (to: string, subject: string, html: string) => Promise<void>
+) {
+  const quoteTickers = portfolio.slice(0, MAX_MORNING_TICKERS);
+
+  const gaps: GapAlert[] = [];
+  const holdings: { ticker: string; name: string; shares: number; price: number; change: number }[] = [];
+
+  for (const p of quoteTickers) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const q: any = await yahooFinance.quote(p.ticker);
+      const price = q.regularMarketPrice ?? 0;
+      const prevClose = q.regularMarketPreviousClose ?? 0;
+      const changePct = q.regularMarketChangePercent ?? 0;
+      const name = q.shortName ?? q.longName ?? p.ticker;
+
+      holdings.push({
+        ticker: p.ticker,
+        name,
+        shares: p.shares,
+        price,
+        change: changePct,
+      });
+
+      // Detect overnight gaps > threshold
+      if (prevClose > 0 && Math.abs(changePct) >= GAP_THRESHOLD) {
+        gaps.push({
+          ticker: p.ticker,
+          name,
+          previousClose: prevClose,
+          currentPrice: price,
+          gapPercent: changePct,
+          direction: changePct >= 0 ? "up" : "down",
+        });
+      }
+    } catch {
+      // Skip ticker on error
+    }
+  }
+
+  const { subject, html } = morningBriefEmail({
+    gaps,
+    holdings,
+    quotedCount: holdings.length,
+    totalCount: portfolio.length,
+  });
+
+  await sendEmail(user.email, subject, html);
+}
+
+async function runMoversScan(
+  user: { uid: string; email: string; prefs: NotificationPrefs },
+  portfolioTickers: Set<string>,
+  sendEmail: (to: string, subject: string, html: string) => Promise<void>
+) {
+  function mapScreenerResults(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    quotes: any[],
+    excluded: Set<string>
+  ): MarketMover[] {
+    return quotes
+      .filter((q) => !excluded.has(q.symbol))
+      .map((q) => ({
+        ticker: q.symbol ?? "",
+        name: q.shortName ?? q.longName ?? q.symbol ?? "",
+        price: q.regularMarketPrice ?? 0,
+        change: q.regularMarketChange ?? 0,
+        changePercent: q.regularMarketChangePercent ?? 0,
+        volume: q.regularMarketVolume ?? 0,
+        marketCap: q.marketCap ?? 0,
+      }));
+  }
+
+  let gainers: MarketMover[] = [];
+  let losers: MarketMover[] = [];
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const gainersResult: any = await yahooFinance.screener({
+      scrIds: "day_gainers",
+      count: 25,
+    });
+    gainers = mapScreenerResults(gainersResult.quotes ?? [], portfolioTickers);
+  } catch {
+    // Screener may fail on some days
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const losersResult: any = await yahooFinance.screener({
+      scrIds: "day_losers",
+      count: 25,
+    });
+    losers = mapScreenerResults(losersResult.quotes ?? [], portfolioTickers);
+  } catch {
+    // Screener may fail on some days
+  }
+
+  if (gainers.length === 0 && losers.length === 0) return;
+
+  const { subject, html } = marketMoversEmail({ gainers, losers });
+  await sendEmail(user.email, subject, html);
 }
