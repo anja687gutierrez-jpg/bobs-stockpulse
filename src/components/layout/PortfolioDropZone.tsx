@@ -158,12 +158,13 @@ export function PortfolioDropZone({ onExtracted, onDocumentAnalyzed }: Portfolio
         </span>
         <input
           type="file"
-          accept="image/*,.pdf,application/pdf"
+          accept="image/png,image/jpeg,image/webp,image/gif,application/pdf"
           multiple
           className="hidden"
           onChange={(e) => {
             const files = Array.from(e.target.files ?? []);
             if (files.length > 0) handleFiles(files);
+            e.target.value = "";
           }}
         />
       </label>
