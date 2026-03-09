@@ -3,8 +3,8 @@ import YahooFinance from "yahoo-finance2";
 import { getServerDb } from "@/lib/firebase-server";
 import { checkTechnicalSignals } from "@/lib/signals";
 import { getUpcomingEvents, filterReminders } from "@/lib/calendar";
-import { dailyMarketEmail, eveningScanEmail, morningBriefEmail, marketMoversEmail } from "@/lib/email-templates";
-import type { NotificationPrefs, EmailFrequency, TechnicalSignal, CalendarEvent, MarketMover, TrendingStock } from "@/lib/types";
+import { dailyMarketEmail } from "@/lib/email-templates";
+import type { NotificationPrefs, EmailFrequency, TechnicalSignal, CalendarEvent, GapAlert, MarketMover, TrendingStock, VolumeSpike, FiftyTwoWeekAlert, IndexSnapshot, PostEarningsMove } from "@/lib/types";
 
 const yahooFinance = new YahooFinance();
 
@@ -168,7 +168,83 @@ async function runDailyScan(
     return { ticker: p.ticker, name, shares: p.shares, price, changePercent, value };
   });
 
-  // --- 3. Filter significant movers (≥2% change) ---
+  // --- 3. Detect overnight gaps (≥2% from previous close) ---
+  const GAP_THRESHOLD = 2;
+  const gaps: GapAlert[] = portfolio
+    .map((p) => {
+      const q = quoteMap.get(p.ticker);
+      const prevClose = q?.regularMarketPreviousClose ?? 0;
+      const currentPrice = q?.regularMarketPrice ?? 0;
+      if (prevClose <= 0 || currentPrice <= 0) return null;
+      const gapPercent = ((currentPrice - prevClose) / prevClose) * 100;
+      if (Math.abs(gapPercent) < GAP_THRESHOLD) return null;
+      return {
+        ticker: p.ticker,
+        name: q?.shortName ?? q?.longName ?? p.ticker,
+        previousClose: prevClose,
+        currentPrice,
+        gapPercent,
+        direction: (gapPercent >= 0 ? "up" : "down") as "up" | "down",
+      };
+    })
+    .filter((g): g is GapAlert => g !== null);
+
+  // --- 4. Volume spikes (≥2x average 10-day volume) ---
+  const VOLUME_SPIKE_RATIO = 2;
+  const volumeSpikes: VolumeSpike[] = portfolio
+    .map((p) => {
+      const q = quoteMap.get(p.ticker);
+      const volume = q?.regularMarketVolume ?? 0;
+      const avgVolume = q?.averageDailyVolume10Day ?? 0;
+      if (volume <= 0 || avgVolume <= 0) return null;
+      const ratio = volume / avgVolume;
+      if (ratio < VOLUME_SPIKE_RATIO) return null;
+      return {
+        ticker: p.ticker,
+        name: q?.shortName ?? q?.longName ?? p.ticker,
+        volume,
+        avgVolume,
+        ratio,
+      };
+    })
+    .filter((v): v is VolumeSpike => v !== null)
+    .sort((a, b) => b.ratio - a.ratio);
+
+  // --- 5. 52-week high/low proximity (within 5%) ---
+  const FIFTY_TWO_WEEK_THRESHOLD = 5;
+  const fiftyTwoWeekAlerts: FiftyTwoWeekAlert[] = portfolio
+    .map((p) => {
+      const q = quoteMap.get(p.ticker);
+      const price = q?.regularMarketPrice ?? 0;
+      const high = q?.fiftyTwoWeekHigh ?? 0;
+      const low = q?.fiftyTwoWeekLow ?? 0;
+      if (price <= 0 || high <= 0 || low <= 0) return null;
+      const distFromHigh = ((high - price) / high) * 100;
+      const distFromLow = ((price - low) / low) * 100;
+      if (distFromHigh <= FIFTY_TWO_WEEK_THRESHOLD) {
+        return {
+          ticker: p.ticker,
+          name: q?.shortName ?? q?.longName ?? p.ticker,
+          price,
+          level: "high" as const,
+          distance: distFromHigh,
+        };
+      }
+      if (distFromLow <= FIFTY_TWO_WEEK_THRESHOLD) {
+        return {
+          ticker: p.ticker,
+          name: q?.shortName ?? q?.longName ?? p.ticker,
+          price,
+          level: "low" as const,
+          distance: distFromLow,
+        };
+      }
+      return null;
+    })
+    .filter((a): a is FiftyTwoWeekAlert => a !== null)
+    .sort((a, b) => a.distance - b.distance);
+
+  // --- 6. Filter significant movers (≥2% change) ---
   const significantMovers = holdings
     .filter((h) => Math.abs(h.changePercent) >= SIGNIFICANT_CHANGE)
     .sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
@@ -179,7 +255,7 @@ async function runDailyScan(
     ? quotedHoldings.reduce((sum, h) => sum + h.changePercent, 0) / quotedHoldings.length
     : 0;
 
-  // --- 4. Fetch 220-day historical ONLY for significant movers (for technical signals) ---
+  // --- 7. Fetch 220-day historical ONLY for significant movers (for technical signals) ---
   let allSignals: TechnicalSignal[] = [];
   if (user.prefs.signalAlerts && significantMovers.length > 0) {
     const period1 = new Date();
@@ -210,7 +286,7 @@ async function runDailyScan(
     }
   }
 
-  // --- 5. Calendar events ---
+  // --- 8. Calendar events ---
   let allEvents: CalendarEvent[] = [];
   if (tickers.length > 0 && (user.prefs.earningsAlerts || user.prefs.dividendAlerts)) {
     try {
@@ -226,7 +302,46 @@ async function runDailyScan(
     }
   }
 
-  // --- 6. Screener: day_gainers + day_losers, exclude portfolio ---
+  // --- 9. Post-earnings moves (earnings today + significant move) ---
+  const earningsToday = allEvents.filter((e) => e.event === "earnings" && e.daysUntil === 0);
+  const postEarningsMoves: PostEarningsMove[] = earningsToday
+    .map((e) => {
+      const h = holdings.find((h) => h.ticker === e.ticker);
+      if (!h || Math.abs(h.changePercent) < SIGNIFICANT_CHANGE) return null;
+      return {
+        ticker: h.ticker,
+        name: h.name,
+        price: h.price,
+        changePercent: h.changePercent,
+      };
+    })
+    .filter((p): p is PostEarningsMove => p !== null);
+
+  // --- 10. Index benchmarks + VIX ---
+  let indices: IndexSnapshot[] = [];
+  let vix: number | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const indexQuotes: any = await yahooFinance.quote(["SPY", "QQQ", "DIA", "^VIX"]);
+    const indexArr = Array.isArray(indexQuotes) ? indexQuotes : [indexQuotes];
+    for (const q of indexArr) {
+      if (!q?.symbol) continue;
+      if (q.symbol === "^VIX") {
+        vix = q.regularMarketPrice ?? null;
+      } else {
+        indices.push({
+          ticker: q.symbol,
+          name: q.shortName ?? q.symbol,
+          price: q.regularMarketPrice ?? 0,
+          changePercent: q.regularMarketChangePercent ?? 0,
+        });
+      }
+    }
+  } catch {
+    // Index data is non-critical
+  }
+
+  // --- 11. Screener: day_gainers + day_losers, exclude portfolio ---
   let gainers: MarketMover[] = [];
   let losers: MarketMover[] = [];
 
@@ -252,7 +367,7 @@ async function runDailyScan(
     // Screener may fail on some days
   }
 
-  // --- 7. Trending symbols ---
+  // --- 12. Trending symbols ---
   let trending: TrendingStock[] = [];
   try {
     const trendingResult = await yahooFinance.trendingSymbols("US", { count: 20 });
@@ -285,12 +400,18 @@ async function runDailyScan(
     // Trending is non-critical
   }
 
-  // --- 8. Send unified email ---
+  // --- 13. Send unified email ---
   const { subject, html } = dailyMarketEmail({
     holdings,
     significantMovers,
     totalValue,
     totalChange,
+    gaps,
+    volumeSpikes,
+    fiftyTwoWeekAlerts,
+    indices,
+    vix,
+    postEarningsMoves,
     signals: allSignals,
     events: allEvents,
     gainers,

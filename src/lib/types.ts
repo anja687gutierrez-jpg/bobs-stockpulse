@@ -212,3 +212,33 @@ export interface TrendingStock {
   changePercent: number;
   volume: number;
 }
+
+export interface VolumeSpike {
+  ticker: string;
+  name: string;
+  volume: number;
+  avgVolume: number;
+  ratio: number;
+}
+
+export interface FiftyTwoWeekAlert {
+  ticker: string;
+  name: string;
+  price: number;
+  level: "high" | "low";
+  distance: number;
+}
+
+export interface IndexSnapshot {
+  ticker: string;
+  name: string;
+  price: number;
+  changePercent: number;
+}
+
+export interface PostEarningsMove {
+  ticker: string;
+  name: string;
+  price: number;
+  changePercent: number;
+}
