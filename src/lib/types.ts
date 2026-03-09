@@ -204,3 +204,11 @@ export interface MarketMover {
   volume: number;
   marketCap: number;
 }
+
+export interface TrendingStock {
+  ticker: string;
+  name: string;
+  price: number;
+  changePercent: number;
+  volume: number;
+}
